@@ -1,0 +1,26 @@
+{
+  "name": "telegrambot",
+  "version": "1.0.0",
+  "description": "A bot for journey from lobby to Keyroom",
+  "main": "index.js",
+  "scripts": {
+    "start": "micro-bot"
+  },
+  "keywords": [],
+  "author": "Joe U",
+  "license": "ISC",
+  "dependencies": {
+    "atomicassets": "^1.2.1",
+    "axios": "^0.21.1",
+    "firebase-admin": "^9.4.2",
+    "jade": "^1.11.0",
+    "micro-bot": "^2.5.3",
+    "mongodb": "^3.6.6",
+    "mysql": "^2.18.1",
+    "node-cron": "^2.0.3",
+    "node-telegram-bot-api": "^0.50.0",
+    "pug": "^3.0.0",
+    "shelljs": "^0.8.4",
+    "telegraf": "^3.38.0"
+  }
+}
