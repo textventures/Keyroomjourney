@@ -20,7 +20,7 @@
     "node-cron": "^2.0.3",
     "node-telegram-bot-api": "^0.50.0",
     "pug": "^3.0.0",
-    "shelljs": "^0.8.4"
-    
+    "shelljs": "^0.8.4",
+    "telegraf": "^3.38.0"
   }
 }
