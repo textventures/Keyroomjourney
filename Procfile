@@ -1,2 +1,2 @@
 web: micro-bot -p $PORT
-worker: run -m myapp.worker
+worker: micro-bot -p $PORT
