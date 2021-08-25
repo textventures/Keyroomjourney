@@ -1,2 +1,2 @@
-web: micro-bot -p 3000
+worker: micro-bot -p 3000
 
