@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "description": "A bot for journey from lobby to Keyroom",
   "main": "index.js",
-  "scripts": {
-    "start": "micro-bot"
-  },
+"scripts": {
+"start": "micro-bot"
+},
   "keywords": [],
   "author": "Joe U",
   "license": "ISC",
