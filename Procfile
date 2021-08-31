@@ -1,2 +1,2 @@
-worker: micro-bot 
+web: micro-bot
 
