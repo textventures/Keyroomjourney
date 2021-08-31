@@ -1,2 +1,2 @@
-web: micro-bot
+web: micro-bot -p $PORT
 
