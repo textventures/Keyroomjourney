@@ -4,7 +4,7 @@
   "description": "A bot for journey from lobby to Keyroom",
   "main": "index.js",
 "scripts": {
-"start": "node index.js"
+"start": "micro-bot"
 },
   "engines": {
     "node": "14.x"
