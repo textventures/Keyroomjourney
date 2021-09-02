@@ -702,6 +702,11 @@ bot.action('empty', (ctx) =>{
         console.log(err);
     }
 }())
-
+bot.launch({
+  webhook: {
+    domain: 'https://Keyroomjourney.herokuapp.com',
+    port: 4000
+  }
+})
 //bot.launch()
-module.exports = bot
+//module.exports = bot
