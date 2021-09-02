@@ -1,11 +1,11 @@
-//const {Telegraf} = require('telegraf')
-//const bot = new Telegraf('1503604925:AAFyMnXOycEuoAtfy1TO1cE_FoOnSgFp2eg')
+const {Telegraf} = require('telegraf')
+const bot = new Telegraf('1503604925:AAFyMnXOycEuoAtfy1TO1cE_FoOnSgFp2eg')
 const mongo = require("./db");
 const axios = require('axios');
-const { Composer } = require('micro-bot')
+//const { Composer } = require('micro-bot')
 const ASSET_TEMPLATE_ID = 79;
 const KeyRoomLogger = -437551904
-const bot = new Composer
+//const bot = new Composer
 
 const express = require('express')
 const expressApp = express()
@@ -17,8 +17,8 @@ expressApp.get('/', (req, res) => {
 expressApp.listen(port, () => {
   console.log(`Listening on port ${port}`)
 })
-bot.hears(/./, (ctx) => ctx.reply('Hello'))
-//bot.startPolling()
+//bot.hears(/./, (ctx) => ctx.reply('Hello'))
+bot.startPolling()
 
 //this is a respawn
 bot.command("respawn", (ctx) =>{
