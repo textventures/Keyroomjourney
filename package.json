@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "description": "A bot for journey from lobby to Keyroom",
   "main": "index.js",
-"scripts": {
-"start": "node index.js"
-},
+  "scripts": {
+    "start": "node index.js"
+  },
   "engines": {
     "node": "14.x"
   },
@@ -15,6 +15,7 @@
   "dependencies": {
     "atomicassets": "^1.2.1",
     "axios": "^0.21.1",
+    "express": "^4.17.1",
     "firebase-admin": "^9.4.2",
     "micro-bot": "^2.5.3",
     "mongodb": "^3.6.6",
