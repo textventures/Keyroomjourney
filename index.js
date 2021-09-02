@@ -1,11 +1,11 @@
-const {Telegraf} = require('telegraf')
-const bot = new Telegraf('1503604925:AAFyMnXOycEuoAtfy1TO1cE_FoOnSgFp2eg')
+//const {Telegraf} = require('telegraf')
+//const bot = new Telegraf('1503604925:AAFyMnXOycEuoAtfy1TO1cE_FoOnSgFp2eg')
 const mongo = require("./db");
 const axios = require('axios');
-//const { Composer } = require('micro-bot')
+const { Composer } = require('micro-bot')
 const ASSET_TEMPLATE_ID = 79;
 const KeyRoomLogger = -437551904
-//const bot = new Composer
+const bot = new Composer
 
 const express = require('express')
 const expressApp = express()
