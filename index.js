@@ -17,8 +17,7 @@ expressApp.get('/', (req, res) => {
 expressApp.listen(port, () => {
   console.log(`Listening on port ${port}`)
 })
-
-bot.hears(/./, (ctx) => ctx.reply('Hello'))
+//bot.hears(/./, (ctx) => ctx.reply('Hello'))
 bot.startPolling()
 
 //this is a respawn
