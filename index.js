@@ -703,5 +703,5 @@ bot.action('empty', (ctx) =>{
     }
 }())
 
-//bot.launch()
-module.exports = bot
+bot.launch()
+//module.exports = bot
