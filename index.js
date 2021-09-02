@@ -18,7 +18,7 @@ expressApp.listen(port, () => {
   console.log(`Listening on port ${port}`)
 })
 //bot.hears(/./, (ctx) => ctx.reply('Hello'))
-bot.startPolling()
+//bot.startPolling()
 
 //this is a respawn
 bot.command("respawn", (ctx) =>{
