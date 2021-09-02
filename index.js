@@ -1,5 +1,5 @@
 const {Telegraf} = require('telegraf')
-const bot = new Telegraf(process.env.BOT_TOKEN)
+//const bot = new Telegraf(process.env.BOT_TOKEN)
 const mongo = require("./db");
 const axios = require('axios');
 //const { Composer } = require('micro-bot')
@@ -7,6 +7,13 @@ const ASSET_TEMPLATE_ID = 79;
 const KeyRoomLogger = -437551904
 //const bot = new Composer
 
+const API_TOKEN = process.env.BOT_TOKEN || '';
+const PORT = process.env.PORT || 3000;
+const URL = process.env.URL || 'https://Keyroomjourney.herokuapp.com';
+
+const bot = new Telegraf(API_TOKEN);
+bot.telegram.setWebhook(`${URL}/bot${API_TOKEN}`);
+bot.startWebhook(`/bot${API_TOKEN}`, null, PORT)
 
 //this is a respawn
 bot.command("respawn", (ctx) =>{
