@@ -6,11 +6,7 @@ const axios = require('axios');
 const ASSET_TEMPLATE_ID = 79;
 const KeyRoomLogger = -437551904
 //const bot = new Composer
-const PORT = process.env.PORT || 4000
 
-app.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`)
-})
 
 //this is a respawn
 bot.command("respawn", (ctx) =>{
