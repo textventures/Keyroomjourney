@@ -125,7 +125,6 @@ bot.on("message", async (ctx) => {
                     ]
                     },
                 }
-                console.log(response);
             );
             return;
           }
