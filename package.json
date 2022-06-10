@@ -4,16 +4,18 @@
   "description": "A bot for journey from lobby to Keyroom",
   "main": "index.js",
   "scripts": {
-    "start": "micro-bot"
+    "start": "node index.js"
   },
   "keywords": [],
   "author": "Joe U",
   "license": "ISC",
   "dependencies": {
     "atomicassets": "^1.2.1",
-    "axios": "^0.21.1",
+    "axios": "^0.21.4",
+    "express": "^4.18.1",
     "firebase-admin": "^9.4.2",
     "micro-bot": "^2.5.3",
+    "mongo": "^0.1.0",
     "mongodb": "^3.6.6",
     "mysql": "^2.18.1",
     "node-cron": "^2.0.3",
