@@ -11,9 +11,9 @@ const express = require('express')
 const expressApp = express()
 
 const port = process.env.PORT || 3000
-expressApp.get('/', (req, res) => {
-  res.send('Hello World!')
-})
+//expressApp.get('/', (req, res) => {
+//  res.send('Hello World!')
+//})
 
 // Enable graceful stop
 process.once('SIGINT', () => bot.stop('SIGINT'))
@@ -741,4 +741,8 @@ bot.launch({
   })
 */
 bot.launch()
+
+require('http')
+  .createServer(bot.webhookCallback('https://keyroomjourney.herokuapp.com/'))
+  .listen(port);
  // module.exports = bot
