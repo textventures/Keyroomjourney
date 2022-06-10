@@ -100,7 +100,6 @@ bot.action('begin', (ctx) =>{
 
 bot.on("message", async (ctx) => {
     const db = mongo.db('wax');
-    console.log(wax);
     const collection = db.collection('users');
     let user = await collection.findOne({chat_id: ctx.chat.id.toString()});
     const url = `https://wax.api.atomicassets.io/atomicassets/v1/accounts/${user.address}`;
@@ -110,6 +109,7 @@ bot.on("message", async (ctx) => {
           collection_whitelist: "niftywizards",
         },
       })
+      console.log(wax);
       .then(
         (response) => {
           if (response.data.data.assets === 0) {
