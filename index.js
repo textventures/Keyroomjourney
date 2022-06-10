@@ -124,6 +124,7 @@ bot.command("key", async (ctx) => {
                     ]
                     },
                 }
+                console.log(response);
             );
             return;
           }
