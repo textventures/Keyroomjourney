@@ -107,7 +107,6 @@ bot.on("message", async (ctx) => {
       .get(url, {
         params: {
           collection_whitelist: "niftywizards",
-          console.log(user.address);
         },
       })
       .then(
