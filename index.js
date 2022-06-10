@@ -14,6 +14,19 @@ const port = process.env.PORT || 3000
 expressApp.get('/', (req, res) => {
   res.send('Hello World!')
 })
+
+// Enable graceful stop
+process.once('SIGINT', () => bot.stop('SIGINT'))
+process.once('SIGTERM', () => bot.stop('SIGTERM'))
+
+process.on('uncaughtException', function(error) {
+  console.log('uncaughtException ' + error);
+});
+
+process.on('unhandledRejection', function(reason, p){
+    console.log('unhandledRejection ' + reason);
+});
+
 /*expressApp.listen(port, () => {
   console.log(`Listening on port ${port}`)
 })
@@ -22,6 +35,7 @@ bot.startPolling() */
 
 //this is a respawn
 bot.command("respawn", (ctx) =>{
+//console.log("bot.respawn");
     ctx.telegram.sendMessage(ctx.chat.id, 'This will respawn you in The Lobby. Do you wish to respawn?',
     {
         reply_markup: {
@@ -35,6 +49,7 @@ bot.command("respawn", (ctx) =>{
 
 
 bot.start(ctx => {
+//console.log("bot.start");
     // ctx.reply sends message to the user that triggered the bot
     ctx.telegram.sendMessage(ctx.chat.id, 'This will take less than 5 minutes! Do you want to start?',
       {
@@ -99,6 +114,7 @@ bot.action('begin', (ctx) =>{
   
 
 bot.on("message", async (ctx) => {
+
     const db = mongo.db('wax');
     const collection = db.collection('users');
     let user = await collection.findOne({chat_id: ctx.chat.id.toString()});
@@ -175,6 +191,7 @@ bot.on("message", async (ctx) => {
         }
         
       );
+    
   });
   
 //bot.on('text',(ctx) =>{
@@ -715,10 +732,13 @@ bot.action('empty', (ctx) =>{
     }
 }())
 
+/*
 bot.launch({
     webhook: {
       domain: 'https://keyroomjourney.herokuapp.com/',
       port: process.env.PORT
     }
   })
+*/
+bot.launch()
  // module.exports = bot
