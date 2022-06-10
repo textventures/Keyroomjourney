@@ -98,8 +98,9 @@ bot.action('begin', (ctx) =>{
    
   
 
-bot.command("key", async (ctx) => {
+bot.on("message", async (ctx) => {
     const db = mongo.db('wax');
+    console.log(wax);
     const collection = db.collection('users');
     let user = await collection.findOne({chat_id: ctx.chat.id.toString()});
     const url = `https://wax.api.atomicassets.io/atomicassets/v1/accounts/${user.address}`;
