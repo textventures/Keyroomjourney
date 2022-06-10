@@ -98,7 +98,7 @@ bot.action('begin', (ctx) =>{
    
   
 
-bot.on("message", async (ctx) => {
+bot.command("key", async (ctx) => {
     const db = mongo.db('wax');
     const collection = db.collection('users');
     let user = await collection.findOne({chat_id: ctx.chat.id.toString()});
