@@ -99,7 +99,6 @@ bot.action('begin', (ctx) =>{
   
 
 bot.on("message", async (ctx) => {
-    console.log(message);
     const db = mongo.db('wax');
     const collection = db.collection('users');
     let user = await collection.findOne({chat_id: ctx.chat.id.toString()});
@@ -108,6 +107,7 @@ bot.on("message", async (ctx) => {
       .get(url, {
         params: {
           collection_whitelist: "niftywizards",
+          console.log(user.address);
         },
       })
       .then(
