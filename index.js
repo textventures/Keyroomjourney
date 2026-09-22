@@ -33,12 +33,6 @@ process.on('unhandledRejection', function(reason, p){
     console.log('unhandledRejection ' + reason);
 });
 
-/*expressApp.listen(port, () => {
-  console.log(`Listening on port ${port}`)
-})
-//bot.hears(/./, (ctx) => ctx.reply('Hello'))
-bot.startPolling() */
-
 //this is a respawn
 bot.command("respawn", (ctx) =>{
 //console.log("bot.respawn");
@@ -754,13 +748,9 @@ bot.action('empty', (ctx) =>{
     }
 }())
 
-/*
-bot.launch({
-    webhook: {
-      domain: 'https://keyroomjourney.herokuapp.com/',
-      port: process.env.PORT
-    }
-  })
-*/
+
 bot.launch()
- // module.exports = bot
+
+expressApp.listen(port, () => {
+  console.log(`Listening on port ${port}`)
+})
