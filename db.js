@@ -1,5 +1,9 @@
 const MongoClient = require('mongodb').MongoClient;
 
-const mongoClient = new MongoClient('mongodb+srv://unraujoe:cr34Mt34M@nifty-wizards.mnw9w.mongodb.net/', {useUnifiedTopology: true});
+if (!process.env.MONGO_URI) {
+  throw new Error('MONGO_URI environment variable is not set');
+}
+
+const mongoClient = new MongoClient(process.env.MONGO_URI, {useUnifiedTopology: true});
 
 module.exports = mongoClient;

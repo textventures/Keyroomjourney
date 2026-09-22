@@ -1,5 +1,11 @@
+require('dotenv').config()
 const {Telegraf} = require('telegraf')
-const bot = new Telegraf('1503604925:AAFyMnXOycEuoAtfy1TO1cE_FoOnSgFp2eg')
+
+if (!process.env.BOT_TOKEN) {
+  throw new Error('BOT_TOKEN environment variable is not set');
+}
+
+const bot = new Telegraf(process.env.BOT_TOKEN)
 const mongo = require("./db");
 const axios = require('axios');
 //const { Composer } = require('micro-bot')
