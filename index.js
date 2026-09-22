@@ -124,6 +124,22 @@ bot.on("message", async (ctx) => {
     const db = mongo.db('wax');
     const collection = db.collection('users');
     let user = await collection.findOne({chat_id: ctx.chat.id.toString()});
+
+    if (!user || !user.address) {
+        ctx.telegram.sendMessage(
+            ctx.chat.id,
+            `You haven't signed into your wax wallet yet.`,
+            {
+                reply_markup: {
+                    inline_keyboard: [
+                        [{text: "Sign into Wax Cloud Wallet", url: `https://nifty-wizards.herokuapp.com/?chat_id=${ctx.chat.id}&name=${ctx.from.username}`}]
+                    ]
+                },
+            }
+        );
+        return;
+    }
+
     const url = `https://wax.api.atomicassets.io/atomicassets/v1/accounts/${user.address}`;
     axios
       .get(url, {
