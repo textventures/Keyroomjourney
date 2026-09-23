@@ -50,7 +50,7 @@ expressApp.post('/', async (req, res) => {
     `).run(data.chat_id, data.address, data.name);
 
     await bot.telegram.sendMessage(data.chat_id, 'Send any message to continue');
-    res.redirect('https://t.me/inventorytestbot');
+    res.redirect('https://t.me/keyroomjourneybot');
   } catch (error) {
     console.log(error);
     res.redirect('https://t.me/niftywizardslobby');
