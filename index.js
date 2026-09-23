@@ -12,6 +12,7 @@ if (!process.env.PUBLIC_URL) {
 const bot = new Telegraf(process.env.BOT_TOKEN)
 const db = require("./db");
 const axios = require('axios');
+const crypto = require('crypto');
 //const { Composer } = require('micro-bot')
 const ASSET_TEMPLATE_ID = 79;
 const KeyRoomLogger = -437551904
@@ -42,20 +43,74 @@ expressApp.post('/', async (req, res) => {
   }
   try {
     const data = JSON.parse(req.body.data);
-    await bot.telegram.sendMessage(data.chat_id, data.address);
-
-    db.prepare(`
-      INSERT INTO users (chat_id, address, name) VALUES (?, ?, ?)
-      ON CONFLICT(chat_id) DO UPDATE SET address = excluded.address, name = excluded.name
-    `).run(data.chat_id, data.address, data.name);
-
-    await bot.telegram.sendMessage(data.chat_id, 'Send any message to continue');
+    await linkWallet(data.chat_id, data.address, data.name);
     res.redirect('https://t.me/keyroomjourneybot');
   } catch (error) {
     console.log(error);
     res.redirect('https://t.me/niftywizardslobby');
   }
 })
+
+// the Telegram Mini App version of the sign-in page posts here; the user comes from Telegram's signed initData
+expressApp.post('/api/link', async (req, res) => {
+  const user = verifyTelegramInitData(req.body.initData);
+  if (!user) {
+    return res.status(401).send('Could not verify Telegram user');
+  }
+  if (typeof req.body.address !== 'string' || !/^[a-z1-5.]{1,12}$/.test(req.body.address)) {
+    return res.status(400).send('Invalid wax address');
+  }
+  try {
+    // in a private chat with the bot, the chat id is the user's id
+    await linkWallet(String(user.id), req.body.address, user.username);
+    res.json({ ok: true });
+  } catch (error) {
+    console.log(error);
+    res.status(500).send('Could not link wallet');
+  }
+})
+
+async function linkWallet(chatId, address, name) {
+  await bot.telegram.sendMessage(chatId, address);
+
+  db.prepare(`
+    INSERT INTO users (chat_id, address, name) VALUES (?, ?, ?)
+    ON CONFLICT(chat_id) DO UPDATE SET address = excluded.address, name = excluded.name
+  `).run(chatId, address, name);
+
+  await bot.telegram.sendMessage(chatId, 'Send any message to continue');
+}
+
+// https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
+function verifyTelegramInitData(initData) {
+  if (typeof initData !== 'string' || !initData) {
+    return null;
+  }
+  const params = new URLSearchParams(initData);
+  const hash = params.get('hash');
+  if (!hash) {
+    return null;
+  }
+  params.delete('hash');
+  const dataCheckString = [...params.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, value]) => `${key}=${value}`)
+    .join('\n');
+  const secret = crypto.createHmac('sha256', 'WebAppData').update(process.env.BOT_TOKEN).digest();
+  const expected = crypto.createHmac('sha256', secret).update(dataCheckString).digest('hex');
+  if (hash.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(expected))) {
+    return null;
+  }
+  const authDate = Number(params.get('auth_date'));
+  if (!authDate || Date.now() / 1000 - authDate > 24 * 60 * 60) {
+    return null;
+  }
+  try {
+    return JSON.parse(params.get('user'));
+  } catch (error) {
+    return null;
+  }
+}
 
 // Enable graceful stop
 process.once('SIGINT', () => bot.stop('SIGINT'))
@@ -141,7 +196,7 @@ bot.action('begin', (ctx) =>{
         {
             reply_markup: {
                 inline_keyboard: [
-                    [{text: "Sign into Wax Cloud Wallet", url: `${signinUrl}?chat_id=${ctx.chat.id}&name=${ctx.update.callback_query.from.username}`}]
+                    [{text: "Sign into Wax Cloud Wallet", web_app: {url: signinUrl}}]
                 ]
             }
         })
@@ -160,7 +215,7 @@ bot.on("message", async (ctx) => {
             {
                 reply_markup: {
                     inline_keyboard: [
-                        [{text: "Sign into Wax Cloud Wallet", url: `${signinUrl}?chat_id=${ctx.chat.id}&name=${ctx.from.username}`}]
+                        [{text: "Sign into Wax Cloud Wallet", web_app: {url: signinUrl}}]
                     ]
                 },
             }
