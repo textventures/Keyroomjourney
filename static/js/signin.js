@@ -5,8 +5,9 @@ const token = new URLSearchParams(window.location.search).get('t');
 const button = document.getElementById('login');
 const status = document.getElementById('status');
 
-function setStatus(text) {
+function setStatus(text, kind) {
   status.textContent = text;
+  status.dataset.kind = kind || '';
 }
 
 async function postJson(path, body) {
@@ -38,15 +39,15 @@ if (!token) {
       setStatus(`Signed in as ${address}. Linking your wallet...`);
       await postJson('/api/link', { token: token, address: address });
       button.remove();
-      status.innerHTML = '';
-      status.append(`Wallet ${address} is linked! `);
+      setStatus(`Wallet ${address} is linked!`, 'ok');
       const back = document.createElement('a');
       back.href = 'https://t.me/keyroomjourneybot';
       back.textContent = 'Return to Telegram';
-      status.append(back);
+      back.className = 'pixel-btn';
+      status.append(document.createElement('br'), back);
     } catch (error) {
       console.log(error);
-      setStatus(`Sign-in failed: ${error.message || error}`);
+      setStatus(`Sign-in failed: ${error.message || error}`, 'error');
       button.disabled = false;
     }
   });

@@ -1,0 +1,198 @@
+:root {
+  --void: #120f1f;
+  --stone: #211b36;
+  --stone-light: #3a3056;
+  --stone-dark: #0b0914;
+  --gold: #f2c14e;
+  --gold-light: #ffe08a;
+  --gold-dark: #b8862b;
+  --ink: #2a1b05;
+  --text: #ece6ff;
+  --muted: #a79fc9;
+  --error: #ff8a80;
+  --ok: #9be59b;
+  --px: 4px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  background: var(--void);
+  color: var(--text);
+  font-family: 'VT323', monospace;
+  font-size: 22px;
+  line-height: 1.2;
+  -webkit-font-smoothing: none;
+}
+
+#cave {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* Stone tablet. The side-only box-shadows leave the corners empty, which reads as a pixel-rounded border. */
+.tablet {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 400px;
+  padding: 28px 24px 22px;
+  text-align: center;
+  background: var(--stone);
+  box-shadow:
+    inset var(--px) var(--px) 0 var(--stone-light),
+    inset calc(var(--px) * -1) calc(var(--px) * -1) 0 var(--stone-dark),
+    0 calc(var(--px) * -1) 0 0 var(--stone-dark),
+    0 var(--px) 0 0 var(--stone-dark),
+    calc(var(--px) * -1) 0 0 0 var(--stone-dark),
+    var(--px) 0 0 0 var(--stone-dark),
+    0 0 80px 20px rgba(242, 193, 78, 0.12);
+}
+
+.key {
+  display: block;
+  margin: 0 auto 18px;
+  image-rendering: pixelated;
+  animation: bob 2.4s steps(2, end) infinite;
+}
+
+@keyframes bob {
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+h1 {
+  margin: 0 0 18px;
+  font-family: 'Press Start 2P', monospace;
+  font-weight: normal;
+  font-size: 22px;
+  line-height: 1.5;
+  color: var(--gold);
+  text-shadow: 3px 3px 0 var(--stone-dark);
+  text-transform: uppercase;
+}
+
+.title {
+  display: block;
+}
+
+.lead {
+  margin: 0 0 22px;
+  text-wrap: balance;
+  color: var(--text);
+}
+
+.hint {
+  margin: 18px 0 0;
+  text-wrap: balance;
+  font-size: 18px;
+  color: var(--muted);
+}
+
+.pixel-btn {
+  display: inline-block;
+  margin: 6px 0 4px;
+  padding: 14px 22px 12px;
+  border: 0;
+  border-radius: 0;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--ink);
+  text-decoration: none;
+  text-transform: uppercase;
+  background: var(--gold);
+  cursor: pointer;
+  box-shadow:
+    inset calc(var(--px) * -1) calc(var(--px) * -1) 0 var(--gold-dark),
+    inset var(--px) var(--px) 0 var(--gold-light),
+    0 calc(var(--px) * -1) 0 0 var(--stone-dark),
+    0 var(--px) 0 0 var(--stone-dark),
+    calc(var(--px) * -1) 0 0 0 var(--stone-dark),
+    var(--px) 0 0 0 var(--stone-dark),
+    0 calc(var(--px) * 2) 0 0 rgba(0, 0, 0, 0.45);
+}
+
+.pixel-btn:hover {
+  filter: brightness(1.08);
+}
+
+.pixel-btn:active {
+  transform: translateY(var(--px));
+  box-shadow:
+    inset var(--px) var(--px) 0 var(--gold-dark),
+    0 calc(var(--px) * -1) 0 0 var(--stone-dark),
+    0 var(--px) 0 0 var(--stone-dark),
+    calc(var(--px) * -1) 0 0 0 var(--stone-dark),
+    var(--px) 0 0 0 var(--stone-dark);
+}
+
+.pixel-btn:focus-visible {
+  outline: 2px dashed var(--gold-light);
+  outline-offset: 8px;
+}
+
+.pixel-btn:disabled {
+  cursor: wait;
+  filter: saturate(0.3) brightness(0.8);
+  transform: none;
+}
+
+#status {
+  min-height: 1.2em;
+  margin: 16px 0 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+#status:empty {
+  display: none;
+}
+
+#status[data-kind="error"] {
+  color: var(--error);
+}
+
+#status[data-kind="ok"] {
+  color: var(--ok);
+}
+
+#status .pixel-btn {
+  margin-top: 18px;
+}
+
+@media (max-width: 360px) {
+  h1 {
+    font-size: 18px;
+  }
+
+  .tablet {
+    padding: 24px 16px 18px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .key {
+    animation: none;
+  }
+}

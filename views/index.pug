@@ -4,27 +4,32 @@ html(lang="en")
         meta(charset="UTF-8")
         meta(http-equiv="X-UA-Compatible", content="IE=edge")
         meta(name="viewport", content="width=device-width, initial-scale=1.0")
-        script(src="/static/js/waxjs.bundle.js?v=4")
-        link(href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0/dist/css/bootstrap.min.css", rel="stylesheet", integrity="sha384-wEmeIV1mKuiNpC+IOBjI7aAzPcEZeedi5yW5f2yOq55WWLwNGmvvx4Um1vskeMj0" crossorigin="anonymous")
-        title KEY JOURNEY
-        style.
-            .MainBox {
-                display: flex;
-                flex-direction: column;
-                justify-content: center;
-                align-items: center;
-                text-align: center;
-                padding: 20px 20px;
-                margin: 20px 20px;
-                box-shadow: 0px 2px 18px 0px rgba(0, 0, 0, 0.3);
-            }
-            .MainBox *{
-                margin: 10px 0px;
-            }
+        meta(name="theme-color", content="#120f1f")
+        title KEYROOM JOURNEY
+        link(rel="preconnect", href="https://fonts.googleapis.com")
+        link(rel="preconnect", href="https://fonts.gstatic.com", crossorigin)
+        link(href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap", rel="stylesheet")
+        link(href="/static/css/signin.css?v=5", rel="stylesheet")
+        script(src="/static/js/waxjs.bundle.js?v=5")
     body
-        div.MainBox#root
-            h1 KeyRoom Journey Sign-in
-            p Sign in with your WAX Cloud Wallet to continue your journey.
-            button#login.btn.btn-primary(type="button") Log in with WAX Cloud Wallet
-            p#status
-    script(src="/static/js/signin.js?v=4")
+        canvas#cave(aria-hidden="true")
+        main.tablet
+            svg.key(viewBox="0 0 16 7", width="96", height="42", aria-hidden="true", shape-rendering="crispEdges")
+                rect(x="1", y="0", width="3", height="1", fill="#f2c14e")
+                rect(x="0", y="1", width="1", height="3", fill="#f2c14e")
+                rect(x="4", y="1", width="1", height="3", fill="#b8862b")
+                rect(x="1", y="4", width="3", height="1", fill="#b8862b")
+                rect(x="1", y="1", width="1", height="1", fill="#ffe08a")
+                rect(x="5", y="2", width="10", height="1", fill="#f2c14e")
+                rect(x="11", y="3", width="1", height="2", fill="#b8862b")
+                rect(x="13", y="3", width="1", height="3", fill="#b8862b")
+                rect(x="15", y="3", width="1", height="1", fill="#b8862b")
+            h1
+                span.title Keyroom
+                span.title Journey
+            p.lead Sign in with your WAX Cloud Wallet to continue your journey.
+            button#login.pixel-btn(type="button") Log in with WAX
+            p#status(role="status")
+            p.hint You'll head back to Telegram once you're signed in.
+        script(src="/static/js/cave.js?v=5")
+        script(src="/static/js/signin.js?v=5")
