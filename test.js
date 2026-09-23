@@ -1,14 +1,5 @@
-const mongo = require('./db');
+require('dotenv').config()
+const db = require('./db');
 
-(async function () {
-    await mongo.connect();
-
-    let db = mongo.db("test");
-    let collection =  db.collection("test");
-
-    collection.find().toArray(function(err, result) {
-        console.log(result);
-        mongo.close();
-    });
-}())
-
+const users = db.prepare('SELECT * FROM users').all();
+console.log(users);

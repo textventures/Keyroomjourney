@@ -5,8 +5,12 @@ if (!process.env.BOT_TOKEN) {
   throw new Error('BOT_TOKEN environment variable is not set');
 }
 
+if (!process.env.PUBLIC_URL) {
+  throw new Error('PUBLIC_URL environment variable is not set');
+}
+
 const bot = new Telegraf(process.env.BOT_TOKEN)
-const mongo = require("./db");
+const db = require("./db");
 const axios = require('axios');
 //const { Composer } = require('micro-bot')
 const ASSET_TEMPLATE_ID = 79;
@@ -14,11 +18,43 @@ const KeyRoomLogger = -437551904
 //const bot = new Composer
 
 const express = require('express')
+const cookieParser = require('cookie-parser')
 const expressApp = express()
 
 const port = process.env.PORT || 3000
+const signinUrl = process.env.PUBLIC_URL
+
+expressApp.set('view engine', 'pug')
+expressApp.use(cookieParser())
+expressApp.use(express.json())
+expressApp.use(express.urlencoded({ extended: false }))
+expressApp.use('/static', express.static('static'))
+
+// this serves the wax wallet sign-in page linked from the "begin" and "message" handlers below
 expressApp.get('/', (req, res) => {
-  res.send('Hello World!')
+  res.render('index')
+})
+
+// the sign-in page posts the connected wax wallet address here once the user logs in
+expressApp.post('/', async (req, res) => {
+  if (!req.body.data) {
+    return res.redirect('https://t.me/niftywizardslobby');
+  }
+  try {
+    const data = JSON.parse(req.body.data);
+    await bot.telegram.sendMessage(data.chat_id, data.address);
+
+    db.prepare(`
+      INSERT INTO users (chat_id, address, name) VALUES (?, ?, ?)
+      ON CONFLICT(chat_id) DO UPDATE SET address = excluded.address, name = excluded.name
+    `).run(data.chat_id, data.address, data.name);
+
+    await bot.telegram.sendMessage(data.chat_id, 'Send any message to continue');
+    res.redirect('https://t.me/inventorytestbot');
+  } catch (error) {
+    console.log(error);
+    res.redirect('https://t.me/niftywizardslobby');
+  }
 })
 
 // Enable graceful stop
@@ -105,7 +141,7 @@ bot.action('begin', (ctx) =>{
         {
             reply_markup: {
                 inline_keyboard: [
-                    [{text: "Sign into Wax Cloud Wallet", url: `https://nifty-wizards.herokuapp.com/?chat_id=${ctx.chat.id}&name=${ctx.update.callback_query.from.username}`}]
+                    [{text: "Sign into Wax Cloud Wallet", url: `${signinUrl}?chat_id=${ctx.chat.id}&name=${ctx.update.callback_query.from.username}`}]
                 ]
             }
         })
@@ -115,9 +151,7 @@ bot.action('begin', (ctx) =>{
 
 bot.on("message", async (ctx) => {
 
-    const db = mongo.db('wax');
-    const collection = db.collection('users');
-    let user = await collection.findOne({chat_id: ctx.chat.id.toString()});
+    let user = db.prepare('SELECT * FROM users WHERE chat_id = ?').get(ctx.chat.id.toString());
 
     if (!user || !user.address) {
         ctx.telegram.sendMessage(
@@ -126,7 +160,7 @@ bot.on("message", async (ctx) => {
             {
                 reply_markup: {
                     inline_keyboard: [
-                        [{text: "Sign into Wax Cloud Wallet", url: `https://nifty-wizards.herokuapp.com/?chat_id=${ctx.chat.id}&name=${ctx.from.username}`}]
+                        [{text: "Sign into Wax Cloud Wallet", url: `${signinUrl}?chat_id=${ctx.chat.id}&name=${ctx.from.username}`}]
                     ]
                 },
             }
@@ -738,15 +772,6 @@ bot.action('empty', (ctx) =>{
         }
     })
 })
-
-;(async function () {
-    try {
-        await mongo.connect();
-        console.log("Succesfully connected to database");
-    } catch (err) {
-        console.log(err);
-    }
-}())
 
 
 bot.launch()

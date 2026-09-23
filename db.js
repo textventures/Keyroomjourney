@@ -1,9 +1,18 @@
-const MongoClient = require('mongodb').MongoClient;
+const Database = require('better-sqlite3');
 
-if (!process.env.MONGO_URI) {
-  throw new Error('MONGO_URI environment variable is not set');
+if (!process.env.DB_PATH) {
+  throw new Error('DB_PATH environment variable is not set');
 }
 
-const mongoClient = new MongoClient(process.env.MONGO_URI, {useUnifiedTopology: true});
+const db = new Database(process.env.DB_PATH);
+db.pragma('journal_mode = WAL');
 
-module.exports = mongoClient;
+db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    chat_id TEXT PRIMARY KEY,
+    address TEXT NOT NULL,
+    name TEXT
+  )
+`);
+
+module.exports = db;
