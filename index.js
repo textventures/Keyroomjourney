@@ -36,23 +36,17 @@ expressApp.get('/', (req, res) => {
   res.render('index')
 })
 
-const SIGNIN_TOKEN_TTL_SECONDS = 15 * 60
+const SIGNIN_TOKEN_TTL_SECONDS = 24 * 60 * 60
 
-// The Mini App can't open the WAX Cloud Wallet login popup inside Telegram's webview,
-// so it trades Telegram's signed initData for a one-time link the user opens in their real browser.
-expressApp.post('/api/session', (req, res) => {
-  const user = verifyTelegramInitData(req.body.initData);
-  if (!user) {
-    return res.status(401).send('Could not verify Telegram user');
-  }
+// Each sign-in button gets its own one-time link, so the page never has to trust a chat id from the URL.
+function createSigninLink(chatId, name) {
   const token = crypto.randomBytes(24).toString('base64url');
   const now = Math.floor(Date.now() / 1000);
   db.prepare('DELETE FROM signin_tokens WHERE expires_at < ?').run(now);
-  // in a private chat with the bot, the chat id is the user's id
   db.prepare('INSERT INTO signin_tokens (token, chat_id, name, expires_at) VALUES (?, ?, ?, ?)')
-    .run(token, String(user.id), user.username, now + SIGNIN_TOKEN_TTL_SECONDS);
-  res.json({ url: `${signinUrl}/?t=${token}` });
-})
+    .run(token, String(chatId), name, now + SIGNIN_TOKEN_TTL_SECONDS);
+  return `${signinUrl}/?t=${token}`;
+}
 
 // the browser sign-in page posts the wax address it logged in with, plus the one-time token
 expressApp.post('/api/link', async (req, res) => {
@@ -81,37 +75,6 @@ async function linkWallet(chatId, address, name) {
 
   await bot.telegram.sendMessage(chatId, address);
   await bot.telegram.sendMessage(chatId, 'Send any message to continue');
-}
-
-// https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
-function verifyTelegramInitData(initData) {
-  if (typeof initData !== 'string' || !initData) {
-    return null;
-  }
-  const params = new URLSearchParams(initData);
-  const hash = params.get('hash');
-  if (!hash) {
-    return null;
-  }
-  params.delete('hash');
-  const dataCheckString = [...params.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, value]) => `${key}=${value}`)
-    .join('\n');
-  const secret = crypto.createHmac('sha256', 'WebAppData').update(process.env.BOT_TOKEN).digest();
-  const expected = crypto.createHmac('sha256', secret).update(dataCheckString).digest('hex');
-  if (hash.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(expected))) {
-    return null;
-  }
-  const authDate = Number(params.get('auth_date'));
-  if (!authDate || Date.now() / 1000 - authDate > 24 * 60 * 60) {
-    return null;
-  }
-  try {
-    return JSON.parse(params.get('user'));
-  } catch (error) {
-    return null;
-  }
 }
 
 // Enable graceful stop
@@ -198,7 +161,7 @@ bot.action('begin', (ctx) =>{
         {
             reply_markup: {
                 inline_keyboard: [
-                    [{text: "Sign into Wax Cloud Wallet", web_app: {url: signinUrl}}]
+                    [{text: "Sign into Wax Cloud Wallet", url: createSigninLink(ctx.chat.id, ctx.update.callback_query.from.username)}]
                 ]
             }
         })
@@ -217,7 +180,7 @@ bot.on("message", async (ctx) => {
             {
                 reply_markup: {
                     inline_keyboard: [
-                        [{text: "Sign into Wax Cloud Wallet", web_app: {url: signinUrl}}]
+                        [{text: "Sign into Wax Cloud Wallet", url: createSigninLink(ctx.chat.id, ctx.from.username)}]
                     ]
                 },
             }
