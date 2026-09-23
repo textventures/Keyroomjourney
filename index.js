@@ -60,12 +60,31 @@ expressApp.post('/api/link', async (req, res) => {
   db.prepare('DELETE FROM signin_tokens WHERE token = ?').run(session.token);
   try {
     await linkWallet(session.chat_id, req.body.address, session.name);
-    res.json({ ok: true });
   } catch (error) {
     console.log(error);
-    res.status(500).send('Could not link wallet');
+    return res.status(500).send('Could not link wallet');
   }
+  // lets the sign-in page show the "no key" screen; null means the lookup failed, which the bot will retry
+  let keys = null;
+  try {
+    keys = await countKeys(req.body.address);
+  } catch (error) {
+    console.log(error);
+  }
+  res.json({ ok: true, keys: keys, buyUrl: BUY_KEY_URL, findUrl: FIND_KEY_URL });
 })
+
+const BUY_KEY_URL = 'https://wax.atomichub.io/profile/aur5i.wam?collection_name=niftywizards&match=Key&order=desc&seller=aur5i.wam&sort=created&state=0,1,4&symbol=WAX#listings'
+const FIND_KEY_URL = 'https://t.me/niftywizardslobby'
+
+// number of Keyroom keys (niftywizards template ASSET_TEMPLATE_ID) the wax account holds
+async function countKeys(address) {
+  const response = await axios.get(`https://wax.api.atomicassets.io/atomicassets/v1/accounts/${address}`, {
+    params: { collection_whitelist: 'niftywizards' },
+  });
+  const template = response.data.data.templates.find((t) => parseInt(t.template_id) === ASSET_TEMPLATE_ID);
+  return template ? parseInt(template.assets) : 0;
+}
 
 async function linkWallet(chatId, address, name) {
   db.prepare(`
@@ -188,80 +207,42 @@ bot.on("message", async (ctx) => {
         return;
     }
 
-    const url = `https://wax.api.atomicassets.io/atomicassets/v1/accounts/${user.address}`;
-    axios
-      .get(url, {
-        params: {
-          collection_whitelist: "niftywizards",
-        },
-      })
-      .then(
-        (response) => {
-          if (response.data.data.assets === 0) {
-            //ctx.reply(`You don't have a key 1.`);
-            ctx.telegram.sendMessage(
-                ctx.chat.id,
-                `You don't have a key. Buy one on Atomic or find one in the lobby.`,
-                {
-                    reply_markup: {
-                        inline_keyboard: [
-                        [{text: "buy a key", url: "https://wax.atomichub.io/profile/aur5i.wam?collection_name=niftywizards&match=Key&order=desc&seller=aur5i.wam&sort=created&state=0,1,4&symbol=WAX#listings"}, {text: "find a key", url: "https://t.me/niftywizardslobby"}],
-                        [{text: "try signing in again", callback_data: "begin"}]
-                    ]
-                    },
-                }
-            );
-            return;
+    let keys;
+    try {
+      keys = await countKeys(user.address);
+    } catch (error) {
+      console.log(error);
+      ctx.telegram.sendMessage(ctx.chat.id, `We couldn't check your wallet for keys right now. Please try again in a moment.`);
+      return;
+    }
+
+    if (keys > 0) {
+      ctx.telegram.sendMessage(
+          ctx.chat.id,
+          `You have ${keys} key(s). Keys can open doors.`,
+          {
+              reply_markup: {
+                  inline_keyboard: [
+                  [{text: "Open a door", callback_data: "allow"}]
+              ]
+              },
           }
-          template_found = false;
-          response.data.data.templates.forEach((template) => {
-            if (parseInt(template.template_id) === ASSET_TEMPLATE_ID) {
-              //ctx.reply(
-                //`You have ${template.assets} key(s).`
-                ctx.telegram.sendMessage(
-                    ctx.chat.id,
-                    `You have ${template.assets} key(s). Keys can open doors.`,
-                    {
-                        reply_markup: {
-                            inline_keyboard: [
-                            [{text: "Open a door", callback_data: "allow"}]
-                        ]
-                        },
-                    }
-                );
-              //);
-              
-              template_found = true;
-              return;
-            }
-          });
-          if(template_found) {
-              return;
-          }
-          
-          ctx.reply(`"You don't have a key. Buy one on atomic or find one in the lobby.`);
-         
-        },
-        (error) => {
-          console.log(error);
-          //ctx.reply(`"You don't have a key 2.`);
-          ctx.telegram.sendMessage(
-            ctx.chat.id,
-            `You don't have a key. Buy one on Atomic or find one in the lobby.`,
-            {
-                reply_markup: {
-                    inline_keyboard: [
-                    [{text: "buy a key", url: "wax.atomic.io"}, {text: "find a key", url: "t.me/lobby"}],
-                    [{text: "Enter your address again", callback_data: "begin"}]
-                ]
-                },
-            }
-        );
-         
-        }
-        
       );
-    
+      return;
+    }
+
+    ctx.telegram.sendMessage(
+        ctx.chat.id,
+        `You don't have a key. Buy one on Atomic or find one in the lobby.`,
+        {
+            reply_markup: {
+                inline_keyboard: [
+                [{text: "buy a key", url: BUY_KEY_URL}, {text: "find a key", url: FIND_KEY_URL}],
+                [{text: "try signing in again", callback_data: "begin"}]
+            ]
+            },
+        }
+    );
   });
   
 //bot.on('text',(ctx) =>{

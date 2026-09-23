@@ -196,3 +196,78 @@ h1 {
     animation: none;
   }
 }
+
+[hidden] {
+  display: none !important;
+}
+
+.lock {
+  display: block;
+  margin: 0 auto 18px;
+  image-rendering: pixelated;
+  animation: rattle 3s steps(1, end) infinite;
+}
+
+/* a short shake every few seconds, like someone trying the lock */
+@keyframes rattle {
+  0%, 84%, 100% {
+    transform: translateX(0);
+  }
+  88% {
+    transform: translateX(-4px);
+  }
+  92% {
+    transform: translateX(4px);
+  }
+  96% {
+    transform: translateX(-4px);
+  }
+}
+
+.lead strong {
+  color: var(--gold);
+  font-weight: normal;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+
+.pixel-btn.stone {
+  color: var(--text);
+  background: var(--stone-light);
+  box-shadow:
+    inset calc(var(--px) * -1) calc(var(--px) * -1) 0 var(--stone),
+    inset var(--px) var(--px) 0 #54497a,
+    0 calc(var(--px) * -1) 0 0 var(--stone-dark),
+    0 var(--px) 0 0 var(--stone-dark),
+    calc(var(--px) * -1) 0 0 0 var(--stone-dark),
+    var(--px) 0 0 0 var(--stone-dark),
+    0 calc(var(--px) * 2) 0 0 rgba(0, 0, 0, 0.45);
+}
+
+.pixel-btn.stone:active {
+  box-shadow:
+    inset var(--px) var(--px) 0 var(--stone),
+    0 calc(var(--px) * -1) 0 0 var(--stone-dark),
+    0 var(--px) 0 0 var(--stone-dark),
+    calc(var(--px) * -1) 0 0 0 var(--stone-dark),
+    var(--px) 0 0 0 var(--stone-dark);
+}
+
+.hint a {
+  color: var(--gold);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lock {
+    animation: none;
+  }
+}
+
+.actions .pixel-btn {
+  min-width: 220px;
+}

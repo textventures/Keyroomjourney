@@ -22,6 +22,14 @@ async function postJson(path, body) {
   return res.json();
 }
 
+function showNoKey(address, buyUrl, findUrl) {
+  document.getElementById('nokey-wallet').textContent = address;
+  document.getElementById('buy-key').href = buyUrl;
+  document.getElementById('find-key').href = findUrl;
+  document.getElementById('signin').hidden = true;
+  document.getElementById('nokey').hidden = false;
+}
+
 if (!token) {
   button.remove();
   setStatus('Please open this page from the sign-in button in @keyroomjourneybot.');
@@ -36,10 +44,18 @@ if (!token) {
     setStatus('Waiting for WAX Cloud Wallet...');
     try {
       const address = await wax.login();
-      setStatus(`Signed in as ${address}. Linking your wallet...`);
-      await postJson('/api/link', { token: token, address: address });
+      setStatus(`Signed in as ${address}. Checking for keys...`);
+      const result = await postJson('/api/link', { token: token, address: address });
+      if (result.keys === 0) {
+        showNoKey(address, result.buyUrl, result.findUrl);
+        return;
+      }
       button.remove();
-      setStatus(`Wallet ${address} is linked!`, 'ok');
+      if (result.keys > 0) {
+        setStatus(`You carry ${result.keys} ${result.keys === 1 ? 'key' : 'keys'}! Head back to Telegram to open a door.`, 'ok');
+      } else {
+        setStatus(`Wallet ${address} is linked!`, 'ok');
+      }
       const back = document.createElement('a');
       back.href = 'https://t.me/keyroomjourneybot';
       back.textContent = 'Return to Telegram';

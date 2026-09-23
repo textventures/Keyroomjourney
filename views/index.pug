@@ -9,11 +9,11 @@ html(lang="en")
         link(rel="preconnect", href="https://fonts.googleapis.com")
         link(rel="preconnect", href="https://fonts.gstatic.com", crossorigin)
         link(href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap", rel="stylesheet")
-        link(href="/static/css/signin.css?v=5", rel="stylesheet")
-        script(src="/static/js/waxjs.bundle.js?v=5")
+        link(href="/static/css/signin.css?v=6", rel="stylesheet")
+        script(src="/static/js/waxjs.bundle.js?v=6")
     body
         canvas#cave(aria-hidden="true")
-        main.tablet
+        main.tablet#signin
             svg.key(viewBox="0 0 16 7", width="96", height="42", aria-hidden="true", shape-rendering="crispEdges")
                 rect(x="1", y="0", width="3", height="1", fill="#f2c14e")
                 rect(x="0", y="1", width="1", height="3", fill="#f2c14e")
@@ -31,5 +31,26 @@ html(lang="en")
             button#login.pixel-btn(type="button") Log in with WAX
             p#status(role="status")
             p.hint You'll head back to Telegram once you're signed in.
-        script(src="/static/js/cave.js?v=5")
-        script(src="/static/js/signin.js?v=5")
+        main.tablet#nokey(hidden)
+            svg.lock(viewBox="0 0 11 15", width="66", height="90", aria-hidden="true", shape-rendering="crispEdges")
+                rect(x="0", y="0", width="11", height="15", fill="#f2c14e")
+                rect(x="0", y="0", width="11", height="1", fill="#ffe08a")
+                rect(x="0", y="0", width="1", height="15", fill="#ffe08a")
+                rect(x="0", y="14", width="11", height="1", fill="#b8862b")
+                rect(x="10", y="0", width="1", height="15", fill="#b8862b")
+                rect(x="4", y="2", width="3", height="1", fill="#0b0914")
+                rect(x="3", y="3", width="5", height="1", fill="#0b0914")
+                rect(x="2", y="4", width="7", height="2", fill="#0b0914")
+                rect(x="3", y="6", width="5", height="1", fill="#0b0914")
+                rect(x="4", y="7", width="3", height="2", fill="#0b0914")
+                rect(x="3", y="9", width="5", height="2", fill="#0b0914")
+                rect(x="2", y="11", width="7", height="2", fill="#0b0914")
+            h1
+                span.title No key
+            p.lead Wallet #[strong#nokey-wallet] doesn't hold a Keyroom key yet. The doors stay locked until you find one.
+            .actions
+                a#buy-key.pixel-btn(href="#", target="_blank", rel="noopener") Buy a key
+                a#find-key.pixel-btn.stone(href="#", target="_blank", rel="noopener") Find a key
+            p.hint Got one? #[a(href="https://t.me/keyroomjourneybot") Back to Telegram] and send any message to check again.
+        script(src="/static/js/cave.js?v=6")
+        script(src="/static/js/signin.js?v=6")
