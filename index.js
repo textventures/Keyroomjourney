@@ -36,33 +36,36 @@ expressApp.get('/', (req, res) => {
   res.render('index')
 })
 
-// the sign-in page posts the connected wax wallet address here once the user logs in
-expressApp.post('/', async (req, res) => {
-  if (!req.body.data) {
-    return res.redirect('https://t.me/niftywizardslobby');
-  }
-  try {
-    const data = JSON.parse(req.body.data);
-    await linkWallet(data.chat_id, data.address, data.name);
-    res.redirect('https://t.me/keyroomjourneybot');
-  } catch (error) {
-    console.log(error);
-    res.redirect('https://t.me/niftywizardslobby');
-  }
-})
+const SIGNIN_TOKEN_TTL_SECONDS = 15 * 60
 
-// the Telegram Mini App version of the sign-in page posts here; the user comes from Telegram's signed initData
-expressApp.post('/api/link', async (req, res) => {
+// The Mini App can't open the WAX Cloud Wallet login popup inside Telegram's webview,
+// so it trades Telegram's signed initData for a one-time link the user opens in their real browser.
+expressApp.post('/api/session', (req, res) => {
   const user = verifyTelegramInitData(req.body.initData);
   if (!user) {
     return res.status(401).send('Could not verify Telegram user');
   }
+  const token = crypto.randomBytes(24).toString('base64url');
+  const now = Math.floor(Date.now() / 1000);
+  db.prepare('DELETE FROM signin_tokens WHERE expires_at < ?').run(now);
+  // in a private chat with the bot, the chat id is the user's id
+  db.prepare('INSERT INTO signin_tokens (token, chat_id, name, expires_at) VALUES (?, ?, ?, ?)')
+    .run(token, String(user.id), user.username, now + SIGNIN_TOKEN_TTL_SECONDS);
+  res.json({ url: `${signinUrl}/?t=${token}` });
+})
+
+// the browser sign-in page posts the wax address it logged in with, plus the one-time token
+expressApp.post('/api/link', async (req, res) => {
   if (typeof req.body.address !== 'string' || !/^[a-z1-5.]{1,12}$/.test(req.body.address)) {
     return res.status(400).send('Invalid wax address');
   }
+  const session = db.prepare('SELECT * FROM signin_tokens WHERE token = ?').get(String(req.body.token));
+  if (!session || session.expires_at < Math.floor(Date.now() / 1000)) {
+    return res.status(401).send('This sign-in link has expired. Please get a new one from the bot.');
+  }
+  db.prepare('DELETE FROM signin_tokens WHERE token = ?').run(session.token);
   try {
-    // in a private chat with the bot, the chat id is the user's id
-    await linkWallet(String(user.id), req.body.address, user.username);
+    await linkWallet(session.chat_id, req.body.address, session.name);
     res.json({ ok: true });
   } catch (error) {
     console.log(error);
@@ -71,13 +74,12 @@ expressApp.post('/api/link', async (req, res) => {
 })
 
 async function linkWallet(chatId, address, name) {
-  await bot.telegram.sendMessage(chatId, address);
-
   db.prepare(`
     INSERT INTO users (chat_id, address, name) VALUES (?, ?, ?)
     ON CONFLICT(chat_id) DO UPDATE SET address = excluded.address, name = excluded.name
   `).run(chatId, address, name);
 
+  await bot.telegram.sendMessage(chatId, address);
   await bot.telegram.sendMessage(chatId, 'Send any message to continue');
 }
 
