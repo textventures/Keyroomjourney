@@ -17,11 +17,11 @@ const crypto = require('crypto');
 const ASSET_TEMPLATE_ID = 79;
 const KeyRoomLogger = -437551904
 
-// Rooms shared with the other Nifty Wizards bots (same ids as goblin bot). Posts are tagged so the
+// Rooms shared with the other textventure bots (same ids as tavernbot). Posts are tagged so the
 // rooms show which bot the player was in.
-const CEMETERY = -701638493
-const LOGGER = -781036554
-const RESPAWN = -710478803
+const CEMETERY = -429627900 // Journey Cemetery
+const LOGGER = -442916137 // tavernbot's "started the bot" room
+const RESPAWN = -338860311 // Journey respawn logger
 const ROOM_TAG = '[Keyroom Journey]'
 
 function playerName(from) {
