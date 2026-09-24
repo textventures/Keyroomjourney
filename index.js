@@ -16,6 +16,23 @@ const crypto = require('crypto');
 //const { Composer } = require('micro-bot')
 const ASSET_TEMPLATE_ID = 79;
 const KeyRoomLogger = -437551904
+
+// Rooms shared with the other Nifty Wizards bots (same ids as goblin bot). Posts are tagged so the
+// rooms show which bot the player was in.
+const CEMETERY = -701638493
+const LOGGER = -781036554
+const RESPAWN = -710478803
+const ROOM_TAG = '[Keyroom Journey]'
+
+function playerName(from) {
+  return from.username || from.first_name;
+}
+
+// never let a failed room post (e.g. the bot isn't in that group) interrupt the game
+function announce(room, text) {
+  bot.telegram.sendMessage(room, `${ROOM_TAG} ${text}`)
+    .catch((error) => console.log(`announce to ${room} failed: ${error.description || error.message}`));
+}
 //const bot = new Composer
 
 const express = require('express')
@@ -218,6 +235,8 @@ process.on('unhandledRejection', function(reason, p){
 
 //this is a respawn
 bot.command("respawn", (ctx) =>{
+    // this sends a message to the respawn room
+    announce(RESPAWN, `UserName: ${playerName(ctx.from)} has respawned`)
 //console.log("bot.respawn");
     ctx.telegram.sendMessage(ctx.chat.id, 'This will respawn you in The Lobby. Do you wish to respawn?',
     {
@@ -242,6 +261,8 @@ bot.start(ctx => {
             ]
         }
     })
+    // this sends a message to the shared logger room
+    announce(LOGGER, `UserName: ${playerName(ctx.from)} started the bot`)
     // this sends a message to the keyroom logger
     ctx.telegram.sendMessage(KeyRoomLogger, `user @${ctx.from.username} started the bot`,  {
       reply_markup: {
@@ -552,6 +573,8 @@ bot.action ('walk1', (ctx) =>{
 
 //this is a message for 'run1' it ends in death
 bot.action('run1', (ctx) =>{
+    // this sends a message to the cemetery
+    announce(CEMETERY, `UserName: ${playerName(ctx.from)} was impaled on 1000 spears in the Wizard School hall.`)
     ctx.telegram.sendMessage(ctx.chat.id,'You run down the hall. It has rises and dips and it feels like you are flying as run up them and down the other side. You feel free and happy and the hall begins to spin around you. your feet crest over one of the small carpeted hills and suddenly you are flying, or falling! the hills have hidden a large drop to a deep spiked pit. You fall and are impaled on 1000 spears. To try again type /respawn'),
     {
         
@@ -585,6 +608,8 @@ bot.action('door2', (ctx) =>{
 
 //this is a message for 'walk2' it ends in death
 bot.action('walk2', (ctx) =>{
+    // this sends a message to the cemetery
+    announce(CEMETERY, `UserName: ${playerName(ctx.from)} walked when they should have run and fell into the abyss.`)
     ctx.telegram.sendMessage(ctx.chat.id,'You walk down the hall as the sign says. The floor is sloped and it is difficult to walk slowly. It would be fun to and easy to run down the slope and over the carpeted hills and valleys. Your daydream is broken as your back foot slips and falls downward, you scramble forward and notice that the floor behind you is falling away. It was a trap, the floor falls away and takes you down into an abyss to die!  To try again type /respawn')
     {
         
@@ -802,6 +827,8 @@ bot.action ('leave1', (ctx) =>{
 
 //this is a message for 'take1' it ends in death
 bot.action('take1', (ctx) =>{
+    // this sends a message to the cemetery
+    announce(CEMETERY, `UserName: ${playerName(ctx.from)} was gored by the minotaur for stealing from the dead.`)
     ctx.telegram.sendMessage(ctx.chat.id,'You keep walking and find a lantern. The tunnel opens up into a labyrinth. You wander the labyrinth, you do not even know what you are looking for. Suddenly you feel hot breath on your neck and turn to face a giant musceled beast with a human torso and a bull head. He bellows, "Pay the Price!" You grab the coins you took from the dead bodies. He bellows, "YOU STEAL FROM THE DEAD!" The minotaur charges, gores you with a horn, and your insides spill outside. To try again type /respawn')
     {
         
@@ -822,6 +849,8 @@ bot.action('descend2', (ctx) =>{
 
 //this is a message for 'leave2' it ends in death
 bot.action('leave2', (ctx) =>{
+    // this sends a message to the cemetery
+    announce(CEMETERY, `UserName: ${playerName(ctx.from)} was gored by the minotaur with empty pockets.`)
     ctx.telegram.sendMessage(ctx.chat.id,'You keep walking and find a lantern to light. The tunnel opens up into a labyrinth. You wander the labyrinth, you do not even know what you are looking for. Suddenly, you feel hot breath on your neck and turn to face a giant musceled beast with a human torso and a bull head. He bellows, "Pay the Price!" As you search your pockets, and wish you had taken a few coins, the minotaur gores you with a horn, and your insides spill outside. To try again type /respawn')
     {
         
