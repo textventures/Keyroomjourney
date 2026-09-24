@@ -1,4 +1,4 @@
-// Quest to the Arms Room (@QuestToArmsRoom_Bot): through goblins to the dragon Azgaroth the Fierce.
+// Quest to the Arms Room (@questtoarmsroombot): through goblins to the dragon Azgaroth the Fierce.
 // Ported from the Python bot in textventures/questtoarmsroom_bot. Pressing a button replaces that
 // message with the outcome, as the original did.
 const { playerName } = require('../lib/rooms')
