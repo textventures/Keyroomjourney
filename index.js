@@ -39,12 +39,13 @@ expressApp.get('/', (req, res) => {
 const SIGNIN_TOKEN_TTL_SECONDS = 24 * 60 * 60
 
 // Each sign-in button gets its own one-time link, so the page never has to trust a chat id from the URL.
-function createSigninLink(chatId, name) {
+// door is the door the player was trying to open, if any, so it can be reopened after sign-in.
+function createSigninLink(chatId, name, door = null) {
   const token = crypto.randomBytes(24).toString('base64url');
   const now = Math.floor(Date.now() / 1000);
   db.prepare('DELETE FROM signin_tokens WHERE expires_at < ?').run(now);
-  db.prepare('INSERT INTO signin_tokens (token, chat_id, name, expires_at) VALUES (?, ?, ?, ?)')
-    .run(token, String(chatId), name, now + SIGNIN_TOKEN_TTL_SECONDS);
+  db.prepare('INSERT INTO signin_tokens (token, chat_id, name, expires_at, door) VALUES (?, ?, ?, ?, ?)')
+    .run(token, String(chatId), name, now + SIGNIN_TOKEN_TTL_SECONDS, door);
   return `${signinUrl}/?t=${token}`;
 }
 
@@ -58,13 +59,9 @@ expressApp.post('/api/link', async (req, res) => {
     return res.status(401).send('This sign-in link has expired. Please get a new one from the bot.');
   }
   db.prepare('DELETE FROM signin_tokens WHERE token = ?').run(session.token);
-  try {
-    await linkWallet(session.chat_id, req.body.address, session.name);
-  } catch (error) {
-    console.log(error);
-    return res.status(500).send('Could not link wallet');
-  }
-  // lets the sign-in page show the "no key" screen; null means the lookup failed, which the bot will retry
+  linkWallet(session.chat_id, req.body.address, session.name);
+
+  // lets the sign-in page show the "no key" screen; null means the lookup failed
   let keys = null;
   try {
     keys = await countKeys(req.body.address);
@@ -72,6 +69,16 @@ expressApp.post('/api/link', async (req, res) => {
     console.log(error);
   }
   res.json({ ok: true, keys: keys, buyUrl: BUY_KEY_URL, findUrl: FIND_KEY_URL });
+
+  // carry on in Telegram: reopen the door they were trying, or just confirm the new wallet
+  try {
+    await bot.telegram.sendMessage(session.chat_id, `Wallet ${req.body.address} is linked to your Telegram account and is now your active wallet. Use /wallets to add or switch wallets.`);
+    if (session.door) {
+      await tryDoor(session.chat_id, session.name, session.door);
+    }
+  } catch (error) {
+    console.log(error);
+  }
 })
 
 const BUY_KEY_URL = 'https://wax.atomichub.io/profile/aur5i.wam?collection_name=niftywizards&match=Key&order=desc&seller=aur5i.wam&sort=created&state=0,1,4&symbol=WAX#listings'
@@ -86,14 +93,115 @@ async function countKeys(address) {
   return template ? parseInt(template.assets) : 0;
 }
 
-async function linkWallet(chatId, address, name) {
+// adds the wallet to the player's list and makes it their active wallet
+function linkWallet(chatId, address, name) {
+  db.prepare('INSERT OR IGNORE INTO wallets (chat_id, address, added_at) VALUES (?, ?, ?)')
+    .run(chatId, address, Math.floor(Date.now() / 1000));
   db.prepare(`
     INSERT INTO users (chat_id, address, name) VALUES (?, ?, ?)
     ON CONFLICT(chat_id) DO UPDATE SET address = excluded.address, name = excluded.name
   `).run(chatId, address, name);
+}
 
-  await bot.telegram.sendMessage(chatId, address);
-  await bot.telegram.sendMessage(chatId, 'Send any message to continue');
+// the wallet used for key and inventory checks, or null if the player hasn't linked one
+function getActiveWallet(chatId) {
+  const user = db.prepare('SELECT address FROM users WHERE chat_id = ?').get(String(chatId));
+  return user ? user.address : null;
+}
+
+function getWallets(chatId) {
+  return db.prepare('SELECT address FROM wallets WHERE chat_id = ? ORDER BY added_at').all(String(chatId)).map((row) => row.address);
+}
+
+// Doors that need a Keyroom key. Each opens onto the start of its branch of the story.
+const DOORS = {
+  school: { name: 'Wizard School', enter: enterSchool },
+  gang: { name: 'Wizard Gang', enter: enterGang },
+}
+
+// The player tries a door: sign in if they have no wallet, then check the active wallet for a key.
+async function tryDoor(chatId, name, door) {
+  const address = getActiveWallet(chatId);
+  if (!address) {
+    await bot.telegram.sendMessage(chatId, `The ${DOORS[door].name} door is locked. Sign in with your WAX wallet so we can check your pockets for a key.`, {
+      reply_markup: {
+        inline_keyboard: [
+          [{text: "Sign into Wax Cloud Wallet", url: createSigninLink(chatId, name, door)}]
+        ]
+      }
+    });
+    return;
+  }
+
+  let keys;
+  try {
+    keys = await countKeys(address);
+  } catch (error) {
+    console.log(error);
+    await bot.telegram.sendMessage(chatId, `We couldn't check your wallet for keys right now. Please try again in a moment.`, {
+      reply_markup: {
+        inline_keyboard: [
+          [{text: "Try the door again", callback_data: door}]
+        ]
+      }
+    });
+    return;
+  }
+
+  if (keys > 0) {
+    await bot.telegram.sendMessage(chatId, `You have ${keys} key(s) in ${address}. The key turns in the lock!`);
+    await DOORS[door].enter(chatId);
+    return;
+  }
+
+  const keyboard = [
+    [{text: "buy a key", url: BUY_KEY_URL}, {text: "find a key", url: FIND_KEY_URL}],
+    [{text: "Try the door again", callback_data: door}],
+  ];
+  if (getWallets(chatId).length > 1) {
+    keyboard.push([{text: "Switch wallet", callback_data: "wallets"}]);
+  }
+  keyboard.push([{text: "Add another wallet", url: createSigninLink(chatId, name, door)}]);
+  await bot.telegram.sendMessage(chatId, `You don't have a key in ${address}. Buy one on Atomic or find one in the lobby.`, {
+    reply_markup: { inline_keyboard: keyboard }
+  });
+}
+
+// The /wallets screen: every linked wallet with its key count. Tap one to make it active, or ✖ to unlink it.
+async function walletsMessage(chatId, name) {
+  const wallets = getWallets(chatId);
+  const active = getActiveWallet(chatId);
+  const addRow = [{text: "➕ Add a wallet", url: createSigninLink(chatId, name)}];
+  if (wallets.length === 0) {
+    return {
+      text: `You haven't linked a WAX wallet yet.`,
+      extra: { reply_markup: { inline_keyboard: [addRow] } },
+    };
+  }
+  const counts = await Promise.all(wallets.map((address) => countKeys(address).catch(() => null)));
+  const rows = wallets.map((address, i) => {
+    const keys = counts[i] === null ? '?' : counts[i];
+    return [
+      {text: `${address === active ? '✅ ' : ''}${address} · ${keys} key(s)`, callback_data: `usewallet:${address}`},
+      {text: "✖", callback_data: `rmwallet:${address}`},
+    ];
+  });
+  rows.push(addRow);
+  return {
+    text: `Your WAX wallets. The ✅ wallet is used when the story checks your pockets. Tap a wallet to use it instead.\n\nAdding a Cloud Wallet account that's different from the one you're logged into? Log out at mycloudwallet.com first.`,
+    extra: { reply_markup: { inline_keyboard: rows } },
+  };
+}
+
+async function showWallets(ctx) {
+  const { text, extra } = await walletsMessage(ctx.chat.id, ctx.from.username);
+  return ctx.telegram.sendMessage(ctx.chat.id, text, extra);
+}
+
+// redraws the /wallets message in place after a change
+async function refreshWallets(ctx) {
+  const { text, extra } = await walletsMessage(ctx.chat.id, ctx.from.username);
+  return ctx.editMessageText(text, extra).catch((error) => console.log(error));
 }
 
 // Enable graceful stop
@@ -160,9 +268,8 @@ bot.action('end', (ctx) =>{
 })
 
 
-//this is the message for begin, it has 2 choices school and gang
-bot.action('allow', (ctx) =>{
-    //ctx.deleteMessage()
+//this is the lobby with the two doors, it has 2 choices school and gang
+function showDoors(ctx) {
     ctx.telegram.sendMessage(ctx.chat.id, ' You see two doors at the far end of the lobby. Each door has a knob and a keyhole but that is where the similarities end. One door is ornate with gold leaf, fancy but a bit gaudy, the other is wood and metal, rustic and utilitarian. The doors have signs over them! Read the sign and choose a door!',
     {
         reply_markup: {
@@ -171,79 +278,49 @@ bot.action('allow', (ctx) =>{
             ]
         }
     })
+}
+
+bot.action('begin', showDoors)
+// older messages in players' chats still have "Open a door" buttons pointing here
+bot.action('allow', showDoors)
+
+//this lists the player's linked wallets and lets them add, switch or remove one
+bot.command('wallets', showWallets)
+bot.action('wallets', (ctx) => {
+    ctx.answerCbQuery();
+    return showWallets(ctx);
 })
 
-//We will use this to check for a key in players inventory
-bot.action('begin', (ctx) =>{
-    //ctx.deleteMessage()
-    ctx.telegram.sendMessage(ctx.chat.id, 'Please sign into your wax wallet to begin.',
-        {
-            reply_markup: {
-                inline_keyboard: [
-                    [{text: "Sign into Wax Cloud Wallet", url: createSigninLink(ctx.chat.id, ctx.update.callback_query.from.username)}]
-                ]
-            }
-        })
+bot.action(/^usewallet:(.+)$/, (ctx) => {
+    const address = ctx.match[1];
+    if (!getWallets(ctx.chat.id).includes(address)) {
+        return ctx.answerCbQuery('That wallet is no longer linked.');
+    }
+    db.prepare('UPDATE users SET address = ? WHERE chat_id = ?').run(address, String(ctx.chat.id));
+    ctx.answerCbQuery(`Now using ${address}`);
+    return refreshWallets(ctx);
 })
-   
-  
 
-bot.on("message", async (ctx) => {
-
-    let user = db.prepare('SELECT * FROM users WHERE chat_id = ?').get(ctx.chat.id.toString());
-
-    if (!user || !user.address) {
-        ctx.telegram.sendMessage(
-            ctx.chat.id,
-            `You haven't signed into your wax wallet yet.`,
-            {
-                reply_markup: {
-                    inline_keyboard: [
-                        [{text: "Sign into Wax Cloud Wallet", url: createSigninLink(ctx.chat.id, ctx.from.username)}]
-                    ]
-                },
-            }
-        );
-        return;
-    }
-
-    let keys;
-    try {
-      keys = await countKeys(user.address);
-    } catch (error) {
-      console.log(error);
-      ctx.telegram.sendMessage(ctx.chat.id, `We couldn't check your wallet for keys right now. Please try again in a moment.`);
-      return;
-    }
-
-    if (keys > 0) {
-      ctx.telegram.sendMessage(
-          ctx.chat.id,
-          `You have ${keys} key(s). Keys can open doors.`,
-          {
-              reply_markup: {
-                  inline_keyboard: [
-                  [{text: "Open a door", callback_data: "allow"}]
-              ]
-              },
-          }
-      );
-      return;
-    }
-
-    ctx.telegram.sendMessage(
-        ctx.chat.id,
-        `You don't have a key. Buy one on Atomic or find one in the lobby.`,
-        {
-            reply_markup: {
-                inline_keyboard: [
-                [{text: "buy a key", url: BUY_KEY_URL}, {text: "find a key", url: FIND_KEY_URL}],
-                [{text: "try signing in again", callback_data: "begin"}]
-            ]
-            },
+bot.action(/^rmwallet:(.+)$/, (ctx) => {
+    const chatId = String(ctx.chat.id);
+    const address = ctx.match[1];
+    db.prepare('DELETE FROM wallets WHERE chat_id = ? AND address = ?').run(chatId, address);
+    if (getActiveWallet(chatId) === address) {
+        // fall back to the most recently added wallet that's left, if any
+        const next = getWallets(chatId).pop();
+        if (next) {
+            db.prepare('UPDATE users SET address = ? WHERE chat_id = ?').run(next, chatId);
+        } else {
+            db.prepare('DELETE FROM users WHERE chat_id = ?').run(chatId);
         }
-    );
-  });
+    }
+    ctx.answerCbQuery(`Removed ${address}`);
+    return refreshWallets(ctx);
+})
+
+bot.on("message", (ctx) => {
+    ctx.reply('Use /start to begin your journey, /respawn to return to the lobby, or /wallets to manage your WAX wallets.');
+});
   
 //bot.on('text',(ctx) =>{
   //  const address = ctx.message.text
@@ -261,10 +338,13 @@ bot.on("message", async (ctx) => {
   //  console.log(url)
 //})
  
+//choosing a door needs a key, see tryDoor
+bot.action('school', (ctx) => tryDoor(ctx.chat.id, ctx.from.username, 'school'))
+bot.action('gang', (ctx) => tryDoor(ctx.chat.id, ctx.from.username, 'gang'))
+
 //this is the message for gang, it has 2 choices gangpromise and gangcross
-bot.action('gang', (ctx) =>{
-    //ctx.deleteMessage()
-    ctx.telegram.sendMessage(ctx.chat.id, 'You open the door and it leads to a grimy, dimly lit back alley. You think you have gone the wrong way and grab for the door before it shuts. A dark figure emerges from the shadow, and deftly kicks the door closed! He grabs you by the collar and pulls your face close to his and whispers, "Want to become a wizard eh? DO YOU PROMISE TO FOLLOW AND UPHOLD THE SOLEMN WIZARD CODE?',
+function enterGang(chatId) {
+    return bot.telegram.sendMessage(chatId, 'You open the door and it leads to a grimy, dimly lit back alley. You think you have gone the wrong way and grab for the door before it shuts. A dark figure emerges from the shadow, and deftly kicks the door closed! He grabs you by the collar and pulls your face close to his and whispers, "Want to become a wizard eh? DO YOU PROMISE TO FOLLOW AND UPHOLD THE SOLEMN WIZARD CODE?',
     {
         reply_markup: {
             inline_keyboard: [
@@ -272,7 +352,7 @@ bot.action('gang', (ctx) =>{
             ]
         }
     })
-})
+}
 //this is the message for school, it has 2 choices schoolallow and schooldeny
 //bot.action('school', (ctx) =>{
     //ctx.deleteMessage()
@@ -287,9 +367,8 @@ bot.action('gang', (ctx) =>{
 //})
 
 //this is the message for schoolallow, it has 2 choices promise and cross
-bot.action('school', (ctx) =>{
-    //ctx.deleteMessage()
-    ctx.telegram.sendMessage(ctx.chat.id, 'Inside the door there is an equally ornate room with high ceilings and framed pictures on the wall. Everyone looks very important. There is a window at the far end of the room with a cut out to talk through and a slot for papers. A paper comes through the slot and a voice says "fill this out". The paper asks, DO YOU PROMISE TO OBEY AND UPHOLD THE SOLEMN WIZARD CODE?',
+function enterSchool(chatId) {
+    return bot.telegram.sendMessage(chatId, 'Inside the door there is an equally ornate room with high ceilings and framed pictures on the wall. Everyone looks very important. There is a window at the far end of the room with a cut out to talk through and a slot for papers. A paper comes through the slot and a voice says "fill this out". The paper asks, DO YOU PROMISE TO OBEY AND UPHOLD THE SOLEMN WIZARD CODE?',
     {
         reply_markup: {
             inline_keyboard: [
@@ -297,7 +376,7 @@ bot.action('school', (ctx) =>{
             ]
         }
     })
-})
+}
 
 //this is the message for promise, it has 2 choices door and read
 bot.action('promise', (ctx) =>{
