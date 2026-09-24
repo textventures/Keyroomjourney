@@ -1,6 +1,6 @@
 // Quest to the Arms Room (@questtoarmsroombot): through goblins to the dragon Azgaroth the Fierce.
-// Ported from the Python bot in textventures/questtoarmsroom_bot. Pressing a button replaces that
-// message with the outcome, as the original did.
+// Ported from the Python bot in textventures/questtoarmsroom_bot. The original replaced the button
+// message with the outcome; now each outcome is a new message so the story stays in the chat.
 const { playerName } = require('../lib/rooms')
 
 const PATHS = [[
@@ -63,6 +63,6 @@ module.exports = function setupArmsRoom(bot, { announce, ROOMS }) {
       announce(ROOMS.LOGGER, `UserName: ${playerName(ctx.from)} defeated Azgaroth the Fierce`)
     }
     ctx.answerCbQuery()
-    return ctx.editMessageText(OUTCOMES[choice])
+    return ctx.reply(OUTCOMES[choice])
   })
 }
