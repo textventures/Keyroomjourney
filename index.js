@@ -233,6 +233,21 @@ process.on('unhandledRejection', function(reason, p){
     console.log('unhandledRejection ' + reason);
 });
 
+// logs a group's id when the bot is added to it, since groups upgraded to supergroups get new ids
+bot.use((ctx, next) => {
+    const member = ctx.update.my_chat_member;
+    if (member) {
+        console.log(`added to/removed from group: ${member.chat.id} "${member.chat.title}" (${member.chat.type}) now ${member.new_chat_member.status}`);
+    }
+    return next();
+})
+
+// type /roomid in a group to get its id for the room constants above
+bot.command('roomid', (ctx) => {
+    console.log(`roomid: ${ctx.chat.id} "${ctx.chat.title || 'private'}" (${ctx.chat.type})`);
+    return ctx.reply(`This chat's ID is ${ctx.chat.id}`);
+})
+
 //this is a respawn
 bot.command("respawn", (ctx) =>{
     // this sends a message to the respawn room
@@ -340,6 +355,8 @@ bot.action(/^rmwallet:(.+)$/, (ctx) => {
 })
 
 bot.on("message", (ctx) => {
+    // the bot also sits in the shared rooms; only answer in private chats
+    if (ctx.chat.type !== 'private') return;
     ctx.reply('Use /start to begin your journey, /respawn to return to the lobby, or /wallets to manage your WAX wallets.');
 });
   
