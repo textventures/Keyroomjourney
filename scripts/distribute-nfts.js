@@ -8,6 +8,7 @@
 //   --keep=1,69            mint numbers that are never sent
 //   --keep-below=1000      never send mint numbers below this (keeps the low mints)
 //   --batch=100            NFTs per transaction
+//   --port=8088            port for the --cloud approval page (use another to run two at once)
 //   --send                 sign with DISTRIBUTOR_PRIVATE_KEY and send (asks to confirm; --yes skips that)
 //   --cloud                for a WAX Cloud Wallet sender: opens a page on this PC where you log in and
 //                          approve each transaction in MyCloudWallet
@@ -38,10 +39,9 @@ const { PrivateKey } = require('eosjs/dist/eosjs-key-conversions')
 const ATOMIC_API = 'https://wax.api.atomicassets.io'
 const RPC_URL = process.env.WAX_RPC_URL || 'https://wax.greymass.com'
 const ACCOUNT_NAME = /^[a-z1-5.]{1,12}$/
-const CLOUD_PORT = 8088
 
 function parseArgs(argv) {
-  const args = { plan: null, from: process.env.DISTRIBUTOR_ACCOUNT, pick: 'highest', keep: [], keepBelow: 0, batch: 100, send: false, cloud: false, yes: false }
+  const args = { plan: null, from: process.env.DISTRIBUTOR_ACCOUNT, pick: 'highest', keep: [], keepBelow: 0, batch: 100, port: 8088, send: false, cloud: false, yes: false }
   for (const arg of argv) {
     if (arg === '--send') args.send = true
     else if (arg === '--cloud') args.cloud = true
@@ -51,6 +51,7 @@ function parseArgs(argv) {
     else if (arg.startsWith('--keep=')) args.keep = arg.slice(7).split(',').map((m) => parseInt(m.replace('#', '')))
     else if (arg.startsWith('--keep-below=')) args.keepBelow = parseInt(arg.slice(13).replace('#', ''))
     else if (arg.startsWith('--batch=')) args.batch = parseInt(arg.slice(8))
+    else if (arg.startsWith('--port=')) args.port = parseInt(arg.slice(7))
     else if (arg.startsWith('--')) throw new Error(`unknown option ${arg}`)
     else args.plan = arg
   }
@@ -298,7 +299,7 @@ async function sendWithKey(rpc, args, permission, transactions, total) {
 
 // Serves the approval page on this PC. The batches and which ones are done live in a state file next
 // to the plan, so closing the page or re-running the script carries on without sending anything twice.
-function serveCloudApproval(statePath) {
+function serveCloudApproval(statePath, port) {
   const state = JSON.parse(fs.readFileSync(statePath, 'utf8'))
   const save = () => fs.writeFileSync(statePath, JSON.stringify(state, null, 2))
   const files = {
@@ -338,8 +339,8 @@ function serveCloudApproval(statePath) {
     res.end()
   })
   // localhost only: the page is for you, not the network
-  server.listen(CLOUD_PORT, '127.0.0.1', () => {
-    console.log(`\nOpen http://localhost:${CLOUD_PORT} in your browser, log in as ${state.from} and approve each batch.`)
+  server.listen(port, '127.0.0.1', () => {
+    console.log(`\nOpen http://localhost:${port} in your browser, log in as ${state.from} and approve each batch.`)
     console.log('Leave this running until you are done; press Ctrl+C to stop.')
   })
 }
@@ -355,7 +356,7 @@ async function main() {
     const done = state.transactions.filter((t) => t.transactionId).length
     console.log(`Resuming the Cloud Wallet run in ${statePath}: ${done}/${state.transactions.length} transactions already sent.`)
     console.log('(Delete that file to plan from scratch.)')
-    return serveCloudApproval(statePath)
+    return serveCloudApproval(statePath, args.port)
   }
 
   const rpc = new JsonRpc(RPC_URL, { fetch })
@@ -416,7 +417,7 @@ async function main() {
       from: args.from, total, createdAt: new Date().toISOString(),
       transactions: transactions.map((actions) => ({ actions, transactionId: null })),
     }, null, 2))
-    return serveCloudApproval(statePath)
+    return serveCloudApproval(statePath, args.port)
   }
   if (!args.send) {
     console.log('\nDry run: nothing was sent. Add --send (private key) or --cloud (Cloud Wallet) to send it.')
