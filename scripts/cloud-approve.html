@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NFT Distribution</title>
+<style>
+  :root { --bg: #14111f; --panel: #211b36; --line: #3a3056; --text: #ece6ff; --muted: #a79fc9; --gold: #f2c14e; --ok: #9be59b; --err: #ff8a80; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px 16px; background: var(--bg); color: var(--text); font: 16px/1.45 system-ui, sans-serif; }
+  main { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; color: var(--gold); }
+  .muted { color: var(--muted); }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; margin: 16px 0; }
+  button { font: inherit; font-weight: 600; padding: 10px 18px; border: 0; border-radius: 6px; background: var(--gold); color: #2a1b05; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  #status { min-height: 1.4em; margin-top: 10px; }
+  .err { color: var(--err); } .ok { color: var(--ok); }
+  ol { padding-left: 22px; margin: 0; }
+  li { padding: 6px 0; border-bottom: 1px solid var(--line); }
+  li:last-child { border-bottom: 0; }
+  li .state { float: right; font-size: 14px; }
+  a { color: var(--gold); }
+</style>
+</head>
+<body>
+<main>
+  <h1>NFT Distribution</h1>
+  <div id="summary" class="muted">Loading…</div>
+
+  <div class="panel">
+    <button id="login">Log in with WAX Cloud Wallet</button>
+    <button id="approve" hidden>Approve next batch</button>
+    <div id="status"></div>
+  </div>
+
+  <div class="panel">
+    <ol id="batches"></ol>
+  </div>
+</main>
+<script src="/waxjs.bundle.js"></script>
+<script>
+const ATOMIC_API = 'https://wax.api.atomicassets.io'
+const wax = new WaxJS({ rpcEndpoint: 'https://wax.greymass.com', tryAutoLogin: false })
+const loginButton = document.getElementById('login')
+const approveButton = document.getElementById('approve')
+const statusEl = document.getElementById('status')
+let state
+
+function setStatus(text, kind) {
+  statusEl.textContent = text
+  statusEl.className = kind || ''
+}
+
+function describe(actions) {
+  return actions.map((a) => `${a.data.to} (${a.data.asset_ids.length})`).join(', ')
+}
+
+function nextPending() {
+  return state.transactions.findIndex((t) => !t.transactionId)
+}
+
+function render() {
+  const done = state.transactions.filter((t) => t.transactionId).length
+  document.getElementById('summary').textContent =
+    `${state.total} NFTs from ${state.from} in ${state.transactions.length} batches. ${done} sent, ${state.transactions.length - done} to go.`
+  const list = document.getElementById('batches')
+  list.innerHTML = ''
+  state.transactions.forEach((t) => {
+    const li = document.createElement('li')
+    li.append(describe(t.actions))
+    const s = document.createElement('span')
+    s.className = 'state'
+    if (t.transactionId && t.transactionId !== 'already-on-chain') {
+      const a = document.createElement('a')
+      a.href = `https://waxblock.io/transaction/${t.transactionId}`
+      a.target = '_blank'
+      a.textContent = 'sent ✓'
+      s.append(a)
+    } else if (t.transactionId) {
+      s.textContent = 'already sent ✓'
+    } else {
+      s.textContent = 'waiting'
+      s.className += ' muted'
+    }
+    li.append(s)
+    list.append(li)
+  })
+  const next = nextPending()
+  approveButton.textContent = next < 0 ? 'All batches sent' : `Approve batch ${next + 1} of ${state.transactions.length}`
+  approveButton.disabled = next < 0
+}
+
+async function record(index, transactionId) {
+  state.transactions[index].transactionId = transactionId
+  await fetch('/result', { method: 'POST', body: JSON.stringify({ index, transactionId }) })
+  render()
+}
+
+// true if the sender no longer owns any NFT in the batch: it already went through (e.g. the page was
+// closed right after approving), so it mustn't be sent again
+async function alreadySent(actions) {
+  const ids = actions.flatMap((a) => a.data.asset_ids)
+  const res = await fetch(`${ATOMIC_API}/atomicassets/v1/assets?ids=${ids.join(',')}&limit=${ids.length}`)
+  const body = await res.json()
+  return body.data.length === ids.length && body.data.every((a) => a.owner !== state.from)
+}
+
+loginButton.addEventListener('click', async () => {
+  loginButton.disabled = true
+  setStatus('Waiting for WAX Cloud Wallet…')
+  try {
+    const account = await wax.login()
+    if (account !== state.from) {
+      setStatus(`Logged in as ${account}, but these NFTs are in ${state.from}. Log out at mycloudwallet.com, then log in as ${state.from}.`, 'err')
+      loginButton.disabled = false
+      return
+    }
+    loginButton.hidden = true
+    approveButton.hidden = false
+    setStatus(`Logged in as ${account}. Each batch opens MyCloudWallet to approve.`, 'ok')
+  } catch (error) {
+    setStatus(`Login failed: ${error.message || error}`, 'err')
+    loginButton.disabled = false
+  }
+})
+
+approveButton.addEventListener('click', async () => {
+  const index = nextPending()
+  if (index < 0) return
+  const { actions } = state.transactions[index]
+  approveButton.disabled = true
+  try {
+    setStatus(`Checking batch ${index + 1} is still in ${state.from}…`)
+    if (await alreadySent(actions)) {
+      await record(index, 'already-on-chain')
+      setStatus(`Batch ${index + 1} had already gone through; marked as sent.`, 'ok')
+      return
+    }
+    setStatus(`Approve batch ${index + 1} in the MyCloudWallet window…`)
+    const result = await wax.api.transact({ actions }, { blocksBehind: 3, expireSeconds: 120 })
+    await record(index, result.transaction_id)
+    setStatus(`Batch ${index + 1} sent.`, 'ok')
+  } catch (error) {
+    console.log(error)
+    setStatus(`Batch ${index + 1} was not sent: ${error.message || error}. You can try again.`, 'err')
+  } finally {
+    render()
+  }
+})
+
+fetch('/state').then((r) => r.json()).then((s) => {
+  state = s
+  render()
+})
+</script>
+</body>
+</html>

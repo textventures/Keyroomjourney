@@ -6,3 +6,5 @@ gang
 *.db-wal
 *.db-shm
 distribution-log-*.json
+distribution-preview-*.json
+*.cloud-state.json
