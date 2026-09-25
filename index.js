@@ -6,6 +6,7 @@ const express = require('express')
 const cookieParser = require('cookie-parser')
 const { Telegraf } = require('telegraf')
 const { ROOMS, addHerald, createAnnouncer } = require('./lib/rooms')
+const { registerSigninRoutes } = require('./lib/wallets')
 
 if (!process.env.PUBLIC_URL) {
   throw new Error('PUBLIC_URL environment variable is not set');
@@ -28,6 +29,7 @@ expressApp.use(cookieParser())
 expressApp.use(express.json())
 expressApp.use(express.urlencoded({ extended: false }))
 expressApp.use('/static', express.static(path.join(__dirname, 'static')))
+registerSigninRoutes(expressApp)
 
 process.on('uncaughtException', function(error) {
   console.log('uncaughtException ' + error);
@@ -65,7 +67,7 @@ for (const config of BOTS) {
     return ctx.reply(`This chat's ID is ${ctx.chat.id}`)
   })
 
-  config.setup(bot, { announce: createAnnouncer(config.tag, bot.telegram), ROOMS, expressApp })
+  config.setup(bot, { name: config.name, announce: createAnnouncer(config.tag, bot.telegram), ROOMS })
 
   bot.launch()
     .then(() => console.log(`[${config.name}] running as @${bot.options.username}`))

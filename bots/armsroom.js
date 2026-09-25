@@ -2,6 +2,26 @@
 // Ported from the Python bot in textventures/questtoarmsroom_bot. The original replaced the button
 // message with the outcome; now each outcome is a new message so the story stays in the chat.
 const { playerName } = require('../lib/rooms')
+const {
+  createSigninLink, getActiveWallet, getWallets, countTemplates, onLinked, registerWalletCommands,
+} = require('../lib/wallets')
+
+// Entering the quest needs a weapon in the player's active wallet: a sword or a knife.
+const SWORD = 1627
+const KNIFE = 85
+const marketUrl = (templateId) => `https://wax.atomichub.io/market?collection_name=niftywizards&template_id=${templateId}&order=asc&sort=price`
+
+async function countWeapons(address) {
+  const counts = await countTemplates(address, [SWORD, KNIFE])
+  return { sword: counts[SWORD], knife: counts[KNIFE] }
+}
+
+function describeWeapons({ sword, knife }) {
+  const carried = []
+  if (sword > 0) carried.push(sword === 1 ? 'a sword' : `${sword} swords`)
+  if (knife > 0) carried.push(knife === 1 ? 'a knife' : `${knife} knives`)
+  return carried.join(' and ')
+}
 
 const PATHS = [[
   { text: 'haunted forest', callback_data: '1' },
@@ -17,7 +37,54 @@ const OUTCOMES = {
   '6': 'You and the Azgaroth get into a fierce battle, he tries to eviscerate you with his razor sharp claws, but at the last second, you jump out of the way. You throw a rock at him but he dodges. Then you remember what is in your cloak pocket – your trusty wand – which in some ways is more powerful than your knife or sword. With all the breath left in your lungs, you scream out “monstero begonist" while waiving your wand and just like that, Azgaroth is no more! As you stand there panting and drenched in sweat, you think to yourself “I wonder if they will write a song about me?” \n \n use /next to continue your journey',
 }
 
-module.exports = function setupArmsRoom(bot, { announce, ROOMS }) {
+module.exports = function setupArmsRoom(bot, { announce, ROOMS, name: botName }) {
+  // after signing in on the web page, carry on down the path the player chose
+  onLinked(botName, {
+    telegram: async (session, address) => {
+      await bot.telegram.sendMessage(session.chat_id, `Wallet ${address} is linked to your Telegram account and is now your active wallet. Use /wallets to add or switch wallets.`)
+      if (session.door === '1' || session.door === '2') {
+        await choosePath(session.chat_id, session.name, session.door)
+      }
+    },
+  })
+
+  // path is '1' (haunted forest) or '2' (sweltering swamp): either needs a sword or knife in the active wallet
+  async function choosePath(chatId, name, path) {
+    const address = getActiveWallet(chatId)
+    if (!address) {
+      return bot.telegram.sendMessage(chatId, 'Only wizards who carry a weapon survive this road. Sign in with your WAX wallet so we can check for a sword or a knife.', {
+        reply_markup: { inline_keyboard: [[{ text: 'Sign into Wax Cloud Wallet', url: createSigninLink(chatId, name, botName, path) }]] },
+      })
+    }
+
+    let weapons
+    try {
+      weapons = await countWeapons(address)
+    } catch (error) {
+      console.log(error)
+      return bot.telegram.sendMessage(chatId, `We couldn't check your wallet for weapons right now. Please try again in a moment.`, {
+        reply_markup: { inline_keyboard: [[{ text: 'Try again', callback_data: path }]] },
+      })
+    }
+
+    if (weapons.sword + weapons.knife === 0) {
+      const keyboard = [
+        [{ text: 'buy a sword', url: marketUrl(SWORD) }, { text: 'buy a knife', url: marketUrl(KNIFE) }],
+        [{ text: 'Try again', callback_data: path }],
+      ]
+      if (getWallets(chatId).length > 1) {
+        keyboard.push([{ text: 'Switch wallet', callback_data: 'wallets' }])
+      }
+      keyboard.push([{ text: 'Add another wallet', url: createSigninLink(chatId, name, botName, path) }])
+      return bot.telegram.sendMessage(chatId, `You have no sword or knife in ${address}. Only wizards who carry a weapon survive this road. Buy one on Atomic and try again.`, {
+        reply_markup: { inline_keyboard: keyboard },
+      })
+    }
+
+    await bot.telegram.sendMessage(chatId, `You carry ${describeWeapons(weapons)} in ${address}. You grip your weapon and set off.`)
+    return bot.telegram.sendMessage(chatId, OUTCOMES[path])
+  }
+
   bot.start((ctx) => {
     announce(ROOMS.LOGGER, `UserName: ${playerName(ctx.from)} started the bot`)
     return ctx.reply('Hi, and welcome to the “Quest to the Arms Room”. This will be a tough journey, so wield your weapons with all your might. To succeed you must make your way to the dragon “Azgaroth the Fierce” who dwells within the Castle Dread and defeat him. Please choose a path to take below:', {
@@ -30,6 +97,14 @@ module.exports = function setupArmsRoom(bot, { announce, ROOMS }) {
     return ctx.reply('I see you used a heart to revive yourself and try to make your way to Azgaroth the Fierce again. Please choose a path to take below:', {
       reply_markup: { inline_keyboard: PATHS },
     })
+  })
+
+  registerWalletCommands(bot, {
+    botName,
+    describe: async (address) => {
+      const { sword, knife } = await countWeapons(address)
+      return `${sword} sword(s), ${knife} knife(s)`
+    },
   })
 
   bot.command('stab', (ctx) => ctx.reply('As you whip out your knife to battle, the goblins just laugh. Even simple creatures such as these know that a knife is a much weaker line of defense than a sword. Undeterred, you try and fight them with the knife anyway… \n \n Choose your next move below:', {
@@ -56,6 +131,10 @@ module.exports = function setupArmsRoom(bot, { announce, ROOMS }) {
 
   bot.action(/^[1-6]$/, (ctx) => {
     const choice = ctx.match[0]
+    if (choice === '1' || choice === '2') {
+      ctx.answerCbQuery()
+      return choosePath(ctx.chat.id, playerName(ctx.from), choice)
+    }
     if (choice === '4') {
       announce(ROOMS.CEMETERY, `UserName: ${playerName(ctx.from)} stabbed at the air and was eaten by goblins.`)
     }

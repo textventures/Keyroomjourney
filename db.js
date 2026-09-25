@@ -38,6 +38,11 @@ if (!db.prepare('PRAGMA table_info(signin_tokens)').all().some((column) => colum
   db.exec('ALTER TABLE signin_tokens ADD COLUMN door TEXT');
 }
 
+// which bot a sign-in link came from, so that bot carries on after sign-in (empty means Keyroom)
+if (!db.prepare('PRAGMA table_info(signin_tokens)').all().some((column) => column.name === 'bot')) {
+  db.exec('ALTER TABLE signin_tokens ADD COLUMN bot TEXT');
+}
+
 // wallets linked before multi-wallet support only exist in users
 db.exec(`
   INSERT OR IGNORE INTO wallets (chat_id, address, added_at)

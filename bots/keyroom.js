@@ -1,98 +1,35 @@
-// Keyroom Journey (@keyroomjourneybot): the lobby-to-keyroom textventure, plus the WAX wallet
-// sign-in routes on the shared web server.
-const db = require('../db');
-const axios = require('axios');
-const crypto = require('crypto');
+// Keyroom Journey (@keyroomjourneybot): the lobby-to-keyroom textventure. Choosing a door needs a
+// Keyroom key (template 79) in the player's active wallet.
 const { playerName } = require('../lib/rooms');
+const {
+  createSigninLink, getActiveWallet, getWallets, countTemplates, onLinked, registerWalletCommands,
+} = require('../lib/wallets');
 
 const ASSET_TEMPLATE_ID = 79;
 const KeyRoomLogger = -437551904
-
-module.exports = function setupKeyroom(bot, { announce, ROOMS, expressApp }) {
-const { CEMETERY, LOGGER, RESPAWN } = ROOMS
-const signinUrl = process.env.PUBLIC_URL
-
-// this serves the wax wallet sign-in page linked from the "begin" and "message" handlers below
-expressApp.get('/', (req, res) => {
-  res.render('index')
-})
-
-const SIGNIN_TOKEN_TTL_SECONDS = 24 * 60 * 60
-
-// Each sign-in button gets its own one-time link, so the page never has to trust a chat id from the URL.
-// door is the door the player was trying to open, if any, so it can be reopened after sign-in.
-function createSigninLink(chatId, name, door = null) {
-  const token = crypto.randomBytes(24).toString('base64url');
-  const now = Math.floor(Date.now() / 1000);
-  db.prepare('DELETE FROM signin_tokens WHERE expires_at < ?').run(now);
-  db.prepare('INSERT INTO signin_tokens (token, chat_id, name, expires_at, door) VALUES (?, ?, ?, ?, ?)')
-    .run(token, String(chatId), name, now + SIGNIN_TOKEN_TTL_SECONDS, door);
-  return `${signinUrl}/?t=${token}`;
-}
-
-// the browser sign-in page posts the wax address it logged in with, plus the one-time token
-expressApp.post('/api/link', async (req, res) => {
-  if (typeof req.body.address !== 'string' || !/^[a-z1-5.]{1,12}$/.test(req.body.address)) {
-    return res.status(400).send('Invalid wax address');
-  }
-  const session = db.prepare('SELECT * FROM signin_tokens WHERE token = ?').get(String(req.body.token));
-  if (!session || session.expires_at < Math.floor(Date.now() / 1000)) {
-    return res.status(401).send('This sign-in link has expired. Please get a new one from the bot.');
-  }
-  db.prepare('DELETE FROM signin_tokens WHERE token = ?').run(session.token);
-  linkWallet(session.chat_id, req.body.address, session.name);
-
-  // lets the sign-in page show the "no key" screen; null means the lookup failed
-  let keys = null;
-  try {
-    keys = await countKeys(req.body.address);
-  } catch (error) {
-    console.log(error);
-  }
-  res.json({ ok: true, keys: keys, buyUrl: BUY_KEY_URL, findUrl: FIND_KEY_URL });
-
-  // carry on in Telegram: reopen the door they were trying, or just confirm the new wallet
-  try {
-    await bot.telegram.sendMessage(session.chat_id, `Wallet ${req.body.address} is linked to your Telegram account and is now your active wallet. Use /wallets to add or switch wallets.`);
-    if (session.door) {
-      await tryDoor(session.chat_id, session.name, session.door);
-    }
-  } catch (error) {
-    console.log(error);
-  }
-})
 
 const BUY_KEY_URL = 'https://wax.atomichub.io/profile/aur5i.wam?collection_name=niftywizards&match=Key&order=desc&seller=aur5i.wam&sort=created&state=0,1,4&symbol=WAX#listings'
 const FIND_KEY_URL = 'https://t.me/niftywizardslobby'
 
 // number of Keyroom keys (niftywizards template ASSET_TEMPLATE_ID) the wax account holds
 async function countKeys(address) {
-  const response = await axios.get(`https://wax.api.atomicassets.io/atomicassets/v1/accounts/${address}`, {
-    params: { collection_whitelist: 'niftywizards' },
-  });
-  const template = response.data.data.templates.find((t) => parseInt(t.template_id) === ASSET_TEMPLATE_ID);
-  return template ? parseInt(template.assets) : 0;
+  return (await countTemplates(address, [ASSET_TEMPLATE_ID]))[ASSET_TEMPLATE_ID];
 }
 
-// adds the wallet to the player's list and makes it their active wallet
-function linkWallet(chatId, address, name) {
-  db.prepare('INSERT OR IGNORE INTO wallets (chat_id, address, added_at) VALUES (?, ?, ?)')
-    .run(chatId, address, Math.floor(Date.now() / 1000));
-  db.prepare(`
-    INSERT INTO users (chat_id, address, name) VALUES (?, ?, ?)
-    ON CONFLICT(chat_id) DO UPDATE SET address = excluded.address, name = excluded.name
-  `).run(chatId, address, name);
-}
+module.exports = function setupKeyroom(bot, { announce, ROOMS, name: botName }) {
+const { CEMETERY, LOGGER, RESPAWN } = ROOMS
 
-// the wallet used for key and inventory checks, or null if the player hasn't linked one
-function getActiveWallet(chatId) {
-  const user = db.prepare('SELECT address FROM users WHERE chat_id = ?').get(String(chatId));
-  return user ? user.address : null;
-}
-
-function getWallets(chatId) {
-  return db.prepare('SELECT address FROM wallets WHERE chat_id = ? ORDER BY added_at').all(String(chatId)).map((row) => row.address);
-}
+onLinked(botName, {
+  // lets the sign-in page show the "no key" screen; null means the lookup failed
+  page: async (address) => ({ keys: await countKeys(address).catch(() => null), buyUrl: BUY_KEY_URL, findUrl: FIND_KEY_URL }),
+  // carry on in Telegram: reopen the door they were trying, or just confirm the new wallet
+  telegram: async (session, address) => {
+    await bot.telegram.sendMessage(session.chat_id, `Wallet ${address} is linked to your Telegram account and is now your active wallet. Use /wallets to add or switch wallets.`);
+    if (session.door) {
+      await tryDoor(session.chat_id, session.name, session.door);
+    }
+  },
+});
 
 // Doors that need a Keyroom key. Each opens onto the start of its branch of the story.
 const DOORS = {
@@ -107,7 +44,7 @@ async function tryDoor(chatId, name, door) {
     await bot.telegram.sendMessage(chatId, `The ${DOORS[door].name} door is locked. Sign in with your WAX wallet so we can check your pockets for a key.`, {
       reply_markup: {
         inline_keyboard: [
-          [{text: "Sign into Wax Cloud Wallet", url: createSigninLink(chatId, name, door)}]
+          [{text: "Sign into Wax Cloud Wallet", url: createSigninLink(chatId, name, botName, door)}]
         ]
       }
     });
@@ -142,47 +79,10 @@ async function tryDoor(chatId, name, door) {
   if (getWallets(chatId).length > 1) {
     keyboard.push([{text: "Switch wallet", callback_data: "wallets"}]);
   }
-  keyboard.push([{text: "Add another wallet", url: createSigninLink(chatId, name, door)}]);
+  keyboard.push([{text: "Add another wallet", url: createSigninLink(chatId, name, botName, door)}]);
   await bot.telegram.sendMessage(chatId, `You don't have a key in ${address}. Buy one on Atomic or find one in the lobby.`, {
     reply_markup: { inline_keyboard: keyboard }
   });
-}
-
-// The /wallets screen: every linked wallet with its key count. Tap one to make it active, or ✖ to unlink it.
-async function walletsMessage(chatId, name) {
-  const wallets = getWallets(chatId);
-  const active = getActiveWallet(chatId);
-  const addRow = [{text: "➕ Add a wallet", url: createSigninLink(chatId, name)}];
-  if (wallets.length === 0) {
-    return {
-      text: `You haven't linked a WAX wallet yet.`,
-      extra: { reply_markup: { inline_keyboard: [addRow] } },
-    };
-  }
-  const counts = await Promise.all(wallets.map((address) => countKeys(address).catch(() => null)));
-  const rows = wallets.map((address, i) => {
-    const keys = counts[i] === null ? '?' : counts[i];
-    return [
-      {text: `${address === active ? '✅ ' : ''}${address} · ${keys} key(s)`, callback_data: `usewallet:${address}`},
-      {text: "✖", callback_data: `rmwallet:${address}`},
-    ];
-  });
-  rows.push(addRow);
-  return {
-    text: `Your WAX wallets. The ✅ wallet is used when the story checks your pockets. Tap a wallet to use it instead.\n\nAdding a Cloud Wallet account that's different from the one you're logged into? Log out at mycloudwallet.com first.`,
-    extra: { reply_markup: { inline_keyboard: rows } },
-  };
-}
-
-async function showWallets(ctx) {
-  const { text, extra } = await walletsMessage(ctx.chat.id, ctx.from.username);
-  return ctx.telegram.sendMessage(ctx.chat.id, text, extra);
-}
-
-// redraws the /wallets message in place after a change
-async function refreshWallets(ctx) {
-  const { text, extra } = await walletsMessage(ctx.chat.id, ctx.from.username);
-  return ctx.editMessageText(text, extra).catch((error) => console.log(error));
 }
 
 //this is a respawn
@@ -258,38 +158,7 @@ bot.action('begin', showDoors)
 bot.action('allow', showDoors)
 
 //this lists the player's linked wallets and lets them add, switch or remove one
-bot.command('wallets', showWallets)
-bot.action('wallets', (ctx) => {
-    ctx.answerCbQuery();
-    return showWallets(ctx);
-})
-
-bot.action(/^usewallet:(.+)$/, (ctx) => {
-    const address = ctx.match[1];
-    if (!getWallets(ctx.chat.id).includes(address)) {
-        return ctx.answerCbQuery('That wallet is no longer linked.');
-    }
-    db.prepare('UPDATE users SET address = ? WHERE chat_id = ?').run(address, String(ctx.chat.id));
-    ctx.answerCbQuery(`Now using ${address}`);
-    return refreshWallets(ctx);
-})
-
-bot.action(/^rmwallet:(.+)$/, (ctx) => {
-    const chatId = String(ctx.chat.id);
-    const address = ctx.match[1];
-    db.prepare('DELETE FROM wallets WHERE chat_id = ? AND address = ?').run(chatId, address);
-    if (getActiveWallet(chatId) === address) {
-        // fall back to the most recently added wallet that's left, if any
-        const next = getWallets(chatId).pop();
-        if (next) {
-            db.prepare('UPDATE users SET address = ? WHERE chat_id = ?').run(next, chatId);
-        } else {
-            db.prepare('DELETE FROM users WHERE chat_id = ?').run(chatId);
-        }
-    }
-    ctx.answerCbQuery(`Removed ${address}`);
-    return refreshWallets(ctx);
-})
+registerWalletCommands(bot, { botName, describe: async (address) => `${await countKeys(address)} key(s)` })
 
 bot.on("message", (ctx) => {
     // the bot also sits in the shared rooms; only answer in private chats
