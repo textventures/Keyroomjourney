@@ -5,3 +5,4 @@ gang
 *.db
 *.db-wal
 *.db-shm
+distribution-log-*.json

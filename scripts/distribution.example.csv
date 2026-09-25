@@ -1,0 +1,5 @@
+# recipient, template_id, how many (2) or which mint numbers (#12 #40), memo (optional)
+# 1627 = sword, 85 = knife, 79 = key
+imqbk.wam, 1627, 1, a sword for the Arms Room
+vcd5y.wam, 85, 2
+rb5ra.wam, 79, #12 #40, keys to the Keyroom
