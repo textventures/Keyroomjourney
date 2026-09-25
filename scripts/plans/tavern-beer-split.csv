@@ -1,0 +1,8 @@
+# All beer (template 82) from taverntestxx except every mint below #100,
+# split evenly between four accounts, dealt in mint order.
+# taverntestxx is a key (Anchor) account: put DISTRIBUTOR_ACCOUNT=taverntestxx and its active key in .env, then
+# Run: node scripts/distribute-nfts.js scripts/plans/tavern-beer-split.csv --keep-below=100 --send
+lb.r.wam, 82, share
+sw4aw.wam, 82, share
+station.dust, 82, share
+luismarin123, 82, share
