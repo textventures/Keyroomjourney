@@ -6,6 +6,7 @@
 //   --pick=highest|lowest  which mint numbers to send first for counts and "rest" (default highest,
 //                          so the sender keeps its low mints)
 //   --keep=1,69            mint numbers that are never sent
+//   --keep-below=1000      never send mint numbers below this (keeps the low mints)
 //   --batch=100            NFTs per transaction
 //   --send                 sign with DISTRIBUTOR_PRIVATE_KEY and send (asks to confirm; --yes skips that)
 //   --cloud                for a WAX Cloud Wallet sender: opens a page on this PC where you log in and
@@ -40,7 +41,7 @@ const ACCOUNT_NAME = /^[a-z1-5.]{1,12}$/
 const CLOUD_PORT = 8088
 
 function parseArgs(argv) {
-  const args = { plan: null, from: process.env.DISTRIBUTOR_ACCOUNT, pick: 'highest', keep: [], batch: 100, send: false, cloud: false, yes: false }
+  const args = { plan: null, from: process.env.DISTRIBUTOR_ACCOUNT, pick: 'highest', keep: [], keepBelow: 0, batch: 100, send: false, cloud: false, yes: false }
   for (const arg of argv) {
     if (arg === '--send') args.send = true
     else if (arg === '--cloud') args.cloud = true
@@ -48,14 +49,16 @@ function parseArgs(argv) {
     else if (arg.startsWith('--from=')) args.from = arg.slice(7)
     else if (arg.startsWith('--pick=')) args.pick = arg.slice(7)
     else if (arg.startsWith('--keep=')) args.keep = arg.slice(7).split(',').map((m) => parseInt(m.replace('#', '')))
+    else if (arg.startsWith('--keep-below=')) args.keepBelow = parseInt(arg.slice(13).replace('#', ''))
     else if (arg.startsWith('--batch=')) args.batch = parseInt(arg.slice(8))
     else if (arg.startsWith('--')) throw new Error(`unknown option ${arg}`)
     else args.plan = arg
   }
-  if (!args.plan) throw new Error('usage: node scripts/distribute-nfts.js <plan.csv> [--from=] [--pick=] [--keep=] [--batch=] [--send | --cloud] [--yes]')
+  if (!args.plan) throw new Error('usage: node scripts/distribute-nfts.js <plan.csv> [--from=] [--pick=] [--keep=] [--keep-below=] [--batch=] [--send | --cloud] [--yes]')
   if (!args.from) throw new Error('no sender: set DISTRIBUTOR_ACCOUNT in .env or pass --from=<account>')
   if (!['highest', 'lowest'].includes(args.pick)) throw new Error('--pick must be highest or lowest')
   if (args.keep.some(Number.isNaN)) throw new Error('--keep takes mint numbers, e.g. --keep=1,69')
+  if (Number.isNaN(args.keepBelow) || args.keepBelow < 0) throw new Error('--keep-below takes a mint number, e.g. --keep-below=1000')
   if (!(args.batch > 0)) throw new Error('--batch must be a positive number')
   if (args.send && args.cloud) throw new Error('use either --send (private key) or --cloud (Cloud Wallet), not both')
   return args
@@ -131,11 +134,13 @@ async function fetchListedAssetIds(seller) {
 
 // Picks the NFTs for each plan row from the sender's holdings, never touching listed NFTs or kept
 // mints. Explicit mint numbers first, then counts, then "rest" takes whatever is left.
+// keep is a list of mint numbers or a (mint) => boolean
 function allocate(rows, holdingsByTemplate, listed, pick, keep = []) {
+  const isKept = typeof keep === 'function' ? keep : (mint) => keep.includes(mint)
   const available = {}
   for (const [templateId, assets] of Object.entries(holdingsByTemplate)) {
     available[templateId] = assets
-      .filter((a) => !listed.has(a.assetId) && !keep.includes(a.mint))
+      .filter((a) => !listed.has(a.assetId) && !isKept(a.mint))
       .sort((a, b) => (pick === 'highest' ? b.mint - a.mint : a.mint - b.mint))
   }
   const problems = []
@@ -147,7 +152,7 @@ function allocate(rows, holdingsByTemplate, listed, pick, keep = []) {
   const allocations = rows.map((row) => ({ ...row, assets: [] }))
   for (const row of allocations) {
     for (const mint of row.mints) {
-      const asset = keep.includes(mint) ? null : take(row.templateId, (a) => a.mint === mint)
+      const asset = isKept(mint) ? null : take(row.templateId, (a) => a.mint === mint)
       if (asset) row.assets.push(asset)
       else problems.push(`line ${row.line}: mint #${mint} of template ${row.templateId} isn't available (not in the sender's wallet, listed for sale, kept, or already used above)`)
     }
@@ -367,10 +372,15 @@ async function main() {
   const holdingsByTemplate = {}
   for (const id of templateIds) holdingsByTemplate[id] = await fetchHoldings(args.from, id)
   const listed = await fetchListedAssetIds(args.from)
-  const { allocations, problems } = allocate(rows, holdingsByTemplate, listed, args.pick, args.keep)
+  const isKept = (mint) => args.keep.includes(mint) || mint < args.keepBelow
+  const { allocations, problems } = allocate(rows, holdingsByTemplate, listed, args.pick, isKept)
 
   const order = rows.every((r) => r.share || r.mints.length) ? 'shares dealt in mint order' : `${args.pick} mint numbers first`
-  console.log(`\nFrom ${args.from} (${order}${args.keep.length ? `, never sending ${args.keep.map((m) => `#${m}`).join(' ')}` : ''}):\n`)
+  const keeping = [
+    ...args.keep.map((m) => `#${m}`),
+    ...(args.keepBelow > 0 ? [`mints below #${args.keepBelow}`] : []),
+  ]
+  console.log(`\nFrom ${args.from} (${order}${keeping.length ? `, never sending ${keeping.join(', ')}` : ''}):\n`)
   for (const row of allocations) {
     const name = row.assets[0] ? row.assets[0].name : `template ${row.templateId}`
     const mints = row.assets.length ? mintRanges(row.assets.map((a) => a.mint)) : '(none)'
@@ -379,7 +389,7 @@ async function main() {
   for (const id of templateIds) {
     const held = holdingsByTemplate[id]
     const listedHere = held.filter((a) => listed.has(a.assetId)).length
-    const keptHere = held.filter((a) => args.keep.includes(a.mint)).map((a) => `#${a.mint}`)
+    const keptHere = held.filter((a) => isKept(a.mint)).map((a) => `#${a.mint}`)
     const left = held.length - allocations.filter((r) => r.templateId === id).reduce((n, r) => n + r.assets.length, 0)
     console.log(`\n  template ${id}: sender holds ${held.length}${listedHere ? `, ${listedHere} listed for sale (not sent)` : ''}${keptHere.length ? `, keeps ${keptHere.join(' ')}` : ''}; ${left} stay with the sender`)
   }

@@ -1,6 +1,6 @@
-# All weed (template 89) from aur5i.wam except mints #1 and #69 (run with --keep=1,69),
+# All weed (template 89) from aur5i.wam except mints #1, #69 and every mint below #1000,
 # split evenly between four accounts, dealt in mint order so everyone gets low and high mints.
-# Run: node scripts/distribute-nfts.js scripts/plans/weed-split.csv --from=aur5i.wam --keep=1,69 --cloud
+# Run: node scripts/distribute-nfts.js scripts/plans/weed-split.csv --from=aur5i.wam --keep=1,69 --keep-below=1000 --cloud
 lb.r.wam, 89, share
 sw4aw.wam, 89, share
 station.dust, 89, share
