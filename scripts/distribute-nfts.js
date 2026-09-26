@@ -172,14 +172,15 @@ function allocate(rows, holdingsByTemplate, listed, pick, keep = []) {
     row.assets.push(...available[row.templateId].splice(0))
     if (row.assets.length === 0) problems.push(`line ${row.line}: nothing of template ${row.templateId} is left for ${row.recipient} ("rest")`)
   }
-  // deal what's left round-robin in mint order, so every share gets low and high mints alike
+  // deal what's left round-robin in mint order, so every share gets low and high mints alike. The
+  // rotation carries on from one template to the next, so a short template (e.g. 2 NFTs for 4 people)
+  // goes to whoever got one fewer of the template before, and a share can end up with none.
+  let turn = 0
   for (const templateId of new Set(allocations.filter((r) => r.share).map((r) => r.templateId))) {
     const sharers = allocations.filter((r) => r.share && r.templateId === templateId)
     const pool = available[templateId].splice(0).sort((a, b) => a.mint - b.mint)
-    pool.forEach((asset, i) => sharers[i % sharers.length].assets.push(asset))
-    for (const row of sharers) {
-      if (row.assets.length === 0) problems.push(`line ${row.line}: nothing of template ${row.templateId} is left for ${row.recipient} ("share")`)
-    }
+    for (const asset of pool) sharers[turn++ % sharers.length].assets.push(asset)
+    if (pool.length === 0) problems.push(`template ${templateId}: nothing is left to share`)
   }
   return { allocations, problems }
 }

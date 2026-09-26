@@ -1,0 +1,11 @@
+# All weed seeds from aur5i.wam: weed seed (111946) and sour berries weed seed (115317),
+# split evenly between four accounts, dealt in mint order (NFTs listed for sale are left alone).
+# Run: node scripts/distribute-nfts.js scripts/plans/weed-seed-split.csv --from=aur5i.wam --cloud
+lb.r.wam, 111946, share
+sw4aw.wam, 111946, share
+station.dust, 111946, share
+luismarin123, 111946, share
+lb.r.wam, 115317, share
+sw4aw.wam, 115317, share
+station.dust, 115317, share
+luismarin123, 115317, share
