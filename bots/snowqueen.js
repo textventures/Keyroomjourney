@@ -17,17 +17,35 @@ const DAY = 24 * 60 * 60
 
 const CALL_TEXT = 'Dwelryn the Journeyman bangs his tankard on the bar. "Are there any brave adventurers willing to chance their life to save the beautiful Snow Queen?"'
 
-// The quest, one scene per step. choices lead to other scenes; death is how the player died (posted to
-// the cemetery); win marks the end of the quest. Placeholder until the story outline is written up.
+const TAVERN_LINK = 'https://t.me/joinchat/H9mfqFY7eIDpQRg8HNUd3A'
+
+// The quest, one scene per step. Each choice leads to another scene (next) or opens a link (url).
+// death is how the player died (posted to the cemetery), log is a milestone for the logger, and win
+// marks saving the Snow Queen.
 const SCENES = {
   start: {
-    text: 'Dwelryn leads you out of the tavern and into the cold. "The Snow Queen has been taken," he says. "If we do not reach her before the frost moon rises, the whole realm freezes with her."',
+    text: 'Dwelryn leads you out of the tavern and through the town without saying a word. Only when the town is behind you and the forest closes in around the road does his mood brighten.\n\n"I am only happy when I am on a journey," he tells you. "North, East, South and West are my only friends and my only family."\n\nHe looks over at you. "When are you most happy?"',
     choices: [
-      { text: 'Follow Dwelryn north', next: 'soon' },
+      { text: 'Drinking', next: 'keep' },
+      { text: 'Killing', next: 'keep' },
     ],
   },
-  soon: {
-    text: 'The rest of this journey is still being written. Watch the tavern for Dwelryn\'s next call.',
+  keep: {
+    text: 'Dwelryn laughs. "The tavern is a great place to wash away the taste of the blood of your enemy."\n\nHe points up at the ruins of an abandoned castle keep on the hill. "That is your next opponent! Please, bring back the Snow Queen."',
+    choices: [
+      { text: 'Walk to the Castle Keep', next: 'castle' },
+      { text: 'Return to the tavern', next: 'turnback' },
+    ],
+  },
+  castle: {
+    text: 'You leave the road and climb toward the ruined keep...\n\nThe rest of this journey is still being written.',
+  },
+  turnback: {
+    text: 'You turn back toward the lights of the town. Dwelryn watches you go without a word, then walks on toward the keep alone.',
+    log: 'turned back before the Castle Keep',
+    choices: [
+      { text: 'Back to the tavern', url: TAVERN_LINK },
+    ],
   },
 }
 
@@ -108,10 +126,10 @@ module.exports = function setupSnowQueen(bot, { ROOMS }) {
     const scene = SCENES[id]
     if (!scene) return
     if (scene.death) announce(ROOMS.CEMETERY, `UserName: ${playerName(from)} ${scene.death}`)
+    if (scene.log) announce(ROOMS.LOGGER, `UserName: ${playerName(from)} ${scene.log}`)
     if (scene.win) announce(ROOMS.LOGGER, `UserName: ${playerName(from)} saved the Snow Queen`)
-    const extra = scene.choices
-      ? { reply_markup: { inline_keyboard: [scene.choices.map((c) => ({ text: c.text, callback_data: `sq:${c.next}` }))] } }
-      : {}
+    const button = (c) => (c.url ? { text: c.text, url: c.url } : { text: c.text, callback_data: `sq:${c.next}` })
+    const extra = scene.choices ? { reply_markup: { inline_keyboard: [scene.choices.map(button)] } } : {}
     return bot.telegram.sendMessage(chatId, scene.text, extra)
   }
 
