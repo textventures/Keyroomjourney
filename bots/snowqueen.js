@@ -54,13 +54,19 @@ const SCENES = {
 }
 
 // Inside the castle keep players move by typing /east, /west, /north or /south. doors maps each
-// direction to the room it leads to; text is optional (a room without it just names its doors).
+// direction to the room it leads to, WINDOW (climbs out, back outside the gates) or OUTSIDE (walks
+// out); text is optional (a room without it just names its ways out).
+const WINDOW = 'window'
+const OUTSIDE = 'outside'
 const KEEP = {
-  1: { doors: { east: '32', west: '2' } },
-  2: { doors: { east: '1', west: '3' } },
-  3: { doors: { east: '2', west: '4' } },
-  4: { doors: { east: '3', west: '5', north: '6' } },
-  // rooms 5, 6 and 32 are still to be written
+  1: { doors: { east: '32', west: '2', south: WINDOW } },
+  2: { doors: { east: '1', west: '3', south: WINDOW } },
+  3: { doors: { east: '2', west: '4', south: WINDOW } },
+  4: { doors: { north: '6', east: '3', west: '5', south: WINDOW } },
+  5: { doors: { north: '7', east: '4', west: WINDOW, south: OUTSIDE }, text: 'A window looks out to the west, and in the south corner the broken wall opens to the outside.' },
+  6: { doors: { north: '8', south: '4', west: '7' } },
+  7: { doors: { east: '6', south: '5' } }, // more doors to come
+  // rooms 8-32 are still to be written
 }
 const DIRECTIONS = ['north', 'east', 'south', 'west']
 
@@ -152,20 +158,39 @@ module.exports = function setupSnowQueen(bot, { ROOMS }) {
     return bot.telegram.sendMessage(chatId, scene.text, extra)
   }
 
+  // "There are doors to the north and east, and a window to the south. Type /north, /east or /south."
   function doorsText(room) {
-    const doors = DIRECTIONS.filter((d) => room.doors[d])
-    if (doors.length === 0) return ''
-    const names = doors.length === 1 ? `a door to the ${doors[0]}` : `doors to the ${doors.slice(0, -1).join(', ')} and ${doors[doors.length - 1]}`
-    return `There ${doors.length === 1 ? 'is' : 'are'} ${names}. Type ${doors.map((d) => `/${d}`).join(' or ')} to go through a door.`
+    const ways = DIRECTIONS.filter((d) => room.doors[d])
+    if (ways.length === 0) return ''
+    const list = (dirs) => (dirs.length === 1 ? dirs[0] : `${dirs.slice(0, -1).join(', ')} and ${dirs[dirs.length - 1]}`)
+    const kinds = [
+      ['door', ways.filter((d) => room.doors[d] !== WINDOW && room.doors[d] !== OUTSIDE)],
+      ['window', ways.filter((d) => room.doors[d] === WINDOW)],
+      ['way out', ways.filter((d) => room.doors[d] === OUTSIDE)],
+    ].filter(([, dirs]) => dirs.length)
+    const parts = kinds.map(([kind, dirs]) => `${dirs.length === 1 ? `a ${kind}` : `${kind}s`} to the ${list(dirs)}`)
+    const commands = ways.map((d) => `/${d}`)
+    const described = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')}, and ${parts[parts.length - 1]}`
+    return `There ${kinds[0][1].length === 1 ? 'is' : 'are'} ${described}. Type ${commands.length === 1 ? commands[0] : `${commands.slice(0, -1).join(', ')} or ${commands[commands.length - 1]}`}.`
+  }
+
+  // through a window or the broken corner: back outside the keep, choosing the way in again
+  async function leaveKeep(chatId, from, how) {
+    db.prepare('DELETE FROM snowqueen_positions WHERE user_id = ?').run(String(from.id))
+    await bot.telegram.sendMessage(chatId, how === WINDOW
+      ? 'You climb through the window and drop down into the snow outside the keep.'
+      : 'You squeeze out through the broken corner and find yourself outside the keep again.')
+    return sendScene(chatId, from, 'castle')
   }
 
   function enterRoom(chatId, from, id) {
+    const room = KEEP[id]
+    // a room that isn't written yet: the player stays where they were
+    if (!room) return bot.telegram.sendMessage(chatId, `That door is stuck fast. (Room ${id} is still being written.)`)
     db.prepare(`
       INSERT INTO snowqueen_positions (user_id, room, updated_at) VALUES (?, ?, ?)
       ON CONFLICT(user_id) DO UPDATE SET room = excluded.room, updated_at = excluded.updated_at
     `).run(String(from.id), id, now())
-    const room = KEEP[id]
-    if (!room) return bot.telegram.sendMessage(chatId, `Room ${id}\n\nThis part of the keep is still being written.`)
     return bot.telegram.sendMessage(chatId, `Room ${id}\n\n${room.text ? `${room.text}\n\n` : ''}${doorsText(room)}`.trim())
   }
 
@@ -182,9 +207,11 @@ module.exports = function setupSnowQueen(bot, { ROOMS }) {
       if (!position || !position.room) return ctx.reply('There are no doors here.')
       const room = KEEP[position.room]
       if (!room || !room.doors[direction]) {
-        return ctx.reply(`There is no door to the ${direction} here.${room ? ` ${doorsText(room)}` : ''}`)
+        return ctx.reply(`There is no way ${direction} from here.${room ? ` ${doorsText(room)}` : ''}`)
       }
-      return enterRoom(ctx.chat.id, ctx.from, room.doors[direction])
+      const target = room.doors[direction]
+      if (target === WINDOW || target === OUTSIDE) return leaveKeep(ctx.chat.id, ctx.from, target)
+      return enterRoom(ctx.chat.id, ctx.from, target)
     })
   }
 
