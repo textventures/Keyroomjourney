@@ -60,6 +60,11 @@ if (!db.prepare('PRAGMA table_info(signin_tokens)').all().some((column) => colum
   db.exec('ALTER TABLE signin_tokens ADD COLUMN door TEXT');
 }
 
+// when a Snow Queen quest was won, so it can only be won (and announced in the tavern) once
+if (!db.prepare('PRAGMA table_info(snowqueen_calls)').all().some((column) => column.name === 'won_at')) {
+  db.exec('ALTER TABLE snowqueen_calls ADD COLUMN won_at INTEGER');
+}
+
 // which bot a sign-in link came from, so that bot carries on after sign-in (empty means Keyroom)
 if (!db.prepare('PRAGMA table_info(signin_tokens)').all().some((column) => column.name === 'bot')) {
   db.exec('ALTER TABLE signin_tokens ADD COLUMN bot TEXT');

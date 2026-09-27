@@ -19,9 +19,10 @@ const CALL_TEXT = 'Dwelryn the Journeyman bangs his tankard on the bar. "Are the
 
 const TAVERN_LINK = 'https://t.me/joinchat/H9mfqFY7eIDpQRg8HNUd3A'
 
-// The quest, one scene per step. Each choice leads to another scene (next) or opens a link (url).
-// death is how the player died (posted to the cemetery), log is a milestone for the logger, and win
-// marks saving the Snow Queen.
+// The quest, one scene per step. Each choice leads to another scene (next), into a room of the keep
+// (room) or opens a link (url). death is how the player died (posted to the cemetery), log is a
+// milestone for the logger, respawn goes to the respawn room, win marks saving the Snow Queen (which
+// ends the quest), and tavern(name) is posted in the tavern.
 const SCENES = {
   start: {
     text: 'Dwelryn leads you out of the tavern and through the town without saying a word. Only when the town is behind you and the forest closes in around the road does his mood brighten.\n\n"I am only happy when I am on a journey," he tells you. "North, East, South and West are my only friends and my only family."\n\nHe looks over at you. "When are you most happy?"',
@@ -47,8 +48,35 @@ const SCENES = {
   // reached by pushing a wobbly inner wall: north of rooms 1-3 and 28-30, east of 6, 8, 10 and 12,
   // south of 16-21, west of 23-26
   grand: {
-    text: 'You push, and the wall swings open into a grand room in the middle of the castle.\n\nYou see the Snow Queen in a cage hanging from a tree.\n\nThe rest of this journey is still being written.',
+    text: 'You push, and the wall swings open into a grand room in the middle of the castle.\n\nYou see the Snow Queen in a cage hanging from a tree.',
     log: 'found the Snow Queen',
+    choices: [
+      { text: 'Rush to her', next: 'rush' },
+      { text: 'Look for the rope', next: 'rope' },
+    ],
+  },
+  rush: {
+    text: 'You rush toward the cage. Out of the shadows steps the Blue Wizard and swings his club at your head.\n\n"Buy all the URLs and you can be as strong as me!" he proclaims, as everything goes dark.\n\nYou have been killed.',
+    death: 'was clubbed to death by the Blue Wizard',
+    choices: [
+      { text: 'Respawn outside the front gates', next: 'respawn' },
+    ],
+  },
+  respawn: {
+    text: 'You wake up in the snow outside the front gates of the keep. Two large doors lead inside, and to the west the breached wall looks big enough to slip through.',
+    respawn: 'respawned outside the front gates',
+    choices: [
+      { text: 'Go through the front doors', room: '1' },
+      { text: 'Slip through the breached wall', room: '5' },
+    ],
+  },
+  rope: {
+    text: 'You search the grand room and find the rope that holds the cage. You untie it and let the cage down gently.\n\nWhen it reaches the ground the Snow Queen steps out, grabs a club and rushes to a grassy knoll. She swings with all her might.\n\n"URLs are so web 2.0!"\n\nThe Blue Wizard lies dead. The Snow Queen grabs you by the hand and leads you back to the tavern, where she tells everyone that she saved you.',
+    win: true,
+    tavern: (name) => `The doors fly open and the Snow Queen sweeps into the tavern with ${name} by the hand. "Everyone, listen!" she says. "I saved this one."`,
+    choices: [
+      { text: 'Back to the tavern', url: TAVERN_LINK },
+    ],
   },
   turnback: {
     text: 'You turn back toward the lights of the town. Dwelryn watches you go without a word, then walks on toward the keep alone.',
@@ -193,12 +221,31 @@ module.exports = function setupSnowQueen(bot, { ROOMS }) {
     }
   }
 
+  // the player's current quest: the latest call they claimed that they haven't won yet
+  function activeCall(userId) {
+    return db.prepare('SELECT * FROM snowqueen_calls WHERE claimed_by = ? AND won_at IS NULL ORDER BY claimed_at DESC LIMIT 1').get(String(userId))
+  }
+
   function sendScene(chatId, from, id) {
     const scene = SCENES[id]
     if (!scene) return
     if (scene.death) announce(ROOMS.CEMETERY, `UserName: ${playerName(from)} ${scene.death}`)
     if (scene.log) announce(ROOMS.LOGGER, `UserName: ${playerName(from)} ${scene.log}`)
-    if (scene.win) announce(ROOMS.LOGGER, `UserName: ${playerName(from)} saved the Snow Queen`)
+    if (scene.respawn) {
+      announce(ROOMS.RESPAWN, `UserName: ${playerName(from)} ${scene.respawn}`)
+      db.prepare('DELETE FROM snowqueen_positions WHERE user_id = ?').run(String(from.id))
+    }
+    if (scene.win) {
+      // the quest is over: record it, so it can't be won (and announced in the tavern) again
+      const call = activeCall(from.id)
+      if (call) db.prepare('UPDATE snowqueen_calls SET won_at = ? WHERE id = ?').run(now(), call.id)
+      db.prepare('DELETE FROM snowqueen_positions WHERE user_id = ?').run(String(from.id))
+      announce(ROOMS.LOGGER, `UserName: ${playerName(from)} saved the Snow Queen`)
+    }
+    if (scene.tavern && TAVERN_GROUP) {
+      bot.telegram.sendMessage(TAVERN_GROUP, scene.tavern(playerName(from)))
+        .catch((error) => console.log(`[snowqueen] couldn't post in the tavern: ${error.description || error.message}`))
+    }
     const button = (c) => {
       if (c.url) return { text: c.text, url: c.url }
       if (c.room) return { text: c.text, callback_data: `sq_room:${c.room}` }
@@ -244,7 +291,10 @@ module.exports = function setupSnowQueen(bot, { ROOMS }) {
     return bot.telegram.sendMessage(chatId, `Room ${id}\n\n${room.text ? `${room.text}\n\n` : ''}${doorsText(room)}`.trim())
   }
 
+  const QUEST_OVER = "Dwelryn's call has ended. Watch the tavern for his next one."
+
   bot.action(/^sq_room:(\w+)$/, (ctx) => {
+    if (!activeCall(ctx.from.id)) return ctx.answerCbQuery(QUEST_OVER)
     ctx.answerCbQuery()
     return enterRoom(ctx.chat.id, ctx.from, ctx.match[1])
   })
@@ -301,7 +351,9 @@ module.exports = function setupSnowQueen(bot, { ROOMS }) {
     return sendScene(ctx.chat.id, ctx.from, 'start')
   })
 
+  // old buttons from a finished quest do nothing (e.g. tapping "Look for the rope" again)
   bot.action(/^sq:(\w+)$/, (ctx) => {
+    if (!activeCall(ctx.from.id)) return ctx.answerCbQuery(QUEST_OVER)
     ctx.answerCbQuery()
     return sendScene(ctx.chat.id, ctx.from, ctx.match[1])
   })
