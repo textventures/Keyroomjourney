@@ -53,22 +53,50 @@ const SCENES = {
   },
 }
 
-// Inside the castle keep players move by typing /east, /west, /north or /south. doors maps each
-// direction to the room it leads to, WINDOW (climbs out, back outside the gates) or OUTSIDE (walks
-// out); text is optional (a room without it just names its ways out).
+// Inside the castle keep players move by typing /east, /west, /north or /south. The map is written
+// the way it was outlined: each room's doors lead to another room, WINDOW (climbs out, back outside
+// the gates) or OUTSIDE (walks out). A door only needs writing on one side; the way back through it
+// is filled in below unless the room lists it in oneWay. text is optional (a room without it just
+// names its ways out).
 const WINDOW = 'window'
 const OUTSIDE = 'outside'
-const KEEP = {
+const MAP = {
   1: { doors: { east: '32', west: '2', south: WINDOW } },
   2: { doors: { east: '1', west: '3', south: WINDOW } },
   3: { doors: { east: '2', west: '4', south: WINDOW } },
-  4: { doors: { north: '6', east: '3', west: '5', south: WINDOW } },
-  5: { doors: { north: '7', east: '4', west: WINDOW, south: OUTSIDE }, text: 'A window looks out to the west, and in the south corner the broken wall opens to the outside.' },
-  6: { doors: { north: '8', south: '4', west: '7' } },
-  7: { doors: { east: '6', south: '5' } }, // more doors to come
-  // rooms 8-32 are still to be written
+  4: { doors: { east: '3', west: '5', north: '6', south: WINDOW } },
+  5: { doors: { east: '4', north: '7', west: WINDOW, south: OUTSIDE }, text: 'A window looks out to the west, and in the south corner the broken wall opens to the outside.' },
+  6: { doors: { west: '7', north: '8' } },
+  7: { doors: { north: '9', east: '6', west: WINDOW } },
+  8: { doors: { west: '9', north: '10' } },
+  9: { doors: { north: '11', west: WINDOW } },
+  10: { doors: { north: '12', west: '11' } },
+  11: { doors: { north: '13', west: WINDOW } },
+  12: { doors: { north: '14', west: '13' } },
+  13: { doors: { north: '15', west: WINDOW } },
+  14: { doors: { north: WINDOW, east: '16', west: '15' } },
+  15: { doors: { north: WINDOW, west: WINDOW } },
+  // rooms 16-32 are still to be written
 }
 const DIRECTIONS = ['north', 'east', 'south', 'west']
+const OPPOSITE = { north: 'south', south: 'north', east: 'west', west: 'east' }
+
+// MAP plus the way back through every door. Doors that disagree (room 1 east -> 2, but room 2 west
+// -> 3) are logged at startup and the room's own listing wins.
+function buildKeep(map) {
+  const keep = {}
+  for (const [id, room] of Object.entries(map)) keep[id] = { ...room, doors: { ...room.doors } }
+  for (const [id, room] of Object.entries(map)) {
+    for (const [dir, to] of Object.entries(room.doors)) {
+      if (to === WINDOW || to === OUTSIDE || !keep[to] || (room.oneWay || []).includes(dir)) continue
+      const back = keep[to].doors[OPPOSITE[dir]]
+      if (back === undefined) keep[to].doors[OPPOSITE[dir]] = id
+      else if (back !== id) console.log(`[snowqueen] map: room ${id} ${dir} -> ${to}, but room ${to} ${OPPOSITE[dir]} -> ${back}`)
+    }
+  }
+  return keep
+}
+const KEEP = buildKeep(MAP)
 
 const now = () => Math.floor(Date.now() / 1000)
 
