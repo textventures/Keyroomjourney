@@ -44,6 +44,11 @@ const SCENES = {
       { text: 'Slip through the breached wall', room: '5' },
     ],
   },
+  // reached by pushing the wobbly north wall of rooms 1, 2, 3, 28, 29 or 30
+  grand: {
+    text: 'You push, and the wall swings open into a grand room in the middle of the castle.\n\nYou see the Snow Queen in a cage hanging from a tree.\n\nThe rest of this journey is still being written.',
+    log: 'found the Snow Queen',
+  },
   turnback: {
     text: 'You turn back toward the lights of the town. Dwelryn watches you go without a word, then walks on toward the keep alone.',
     log: 'turned back before the Castle Keep',
@@ -60,10 +65,11 @@ const SCENES = {
 // names its ways out).
 const WINDOW = 'window'
 const OUTSIDE = 'outside'
+const SECRET = 'secret' // not listed as a door: a wobbly wall that pushes open into the grand room
 const MAP = {
-  1: { doors: { east: '30', west: '2', south: OUTSIDE }, exit: 'You push open the front doors and step back out into the snow.' },
-  2: { doors: { east: '1', west: '3', south: WINDOW } },
-  3: { doors: { east: '2', west: '4', south: WINDOW } },
+  1: { doors: { east: '30', west: '2', south: OUTSIDE, north: SECRET }, exit: 'You push open the front doors and step back out into the snow.' },
+  2: { doors: { east: '1', west: '3', south: WINDOW, north: SECRET } },
+  3: { doors: { east: '2', west: '4', south: WINDOW, north: SECRET } },
   4: { doors: { east: '3', west: '5', north: '6', south: WINDOW } },
   5: { doors: { east: '4', north: '7', west: WINDOW, south: OUTSIDE }, text: 'A window looks out to the west, and in the south corner the broken wall opens to the outside.', exit: 'You squeeze out through the broken corner and find yourself outside the keep again.' },
   6: { doors: { west: '7', north: '8' } },
@@ -88,9 +94,9 @@ const MAP = {
   25: { doors: { east: WINDOW, south: '26' } },
   26: { doors: { east: WINDOW, south: '27' } },
   27: { doors: { east: WINDOW, south: WINDOW, west: '28' } },
-  28: { doors: { south: WINDOW, west: '29' } },
-  29: { doors: { south: WINDOW, west: '30' } },
-  30: { doors: { south: WINDOW, west: '1' } },
+  28: { doors: { south: WINDOW, west: '29', north: SECRET } },
+  29: { doors: { south: WINDOW, west: '30', north: SECRET } },
+  30: { doors: { south: WINDOW, west: '1', north: SECRET } },
   // rooms 31 and 32 are still to be written
 }
 const DIRECTIONS = ['north', 'east', 'south', 'west']
@@ -103,7 +109,7 @@ function buildKeep(map) {
   for (const [id, room] of Object.entries(map)) keep[id] = { ...room, doors: { ...room.doors } }
   for (const [id, room] of Object.entries(map)) {
     for (const [dir, to] of Object.entries(room.doors)) {
-      if (to === WINDOW || to === OUTSIDE || !keep[to] || (room.oneWay || []).includes(dir)) continue
+      if (to === WINDOW || to === OUTSIDE || to === SECRET || !keep[to] || (room.oneWay || []).includes(dir)) continue
       const back = keep[to].doors[OPPOSITE[dir]]
       if (back === undefined) keep[to].doors[OPPOSITE[dir]] = id
       else if (back !== id) console.log(`[snowqueen] map: room ${id} ${dir} -> ${to}, but room ${to} ${OPPOSITE[dir]} -> ${back}`)
@@ -203,7 +209,7 @@ module.exports = function setupSnowQueen(bot, { ROOMS }) {
 
   // "There are doors to the north and east, and a window to the south. Type /north, /east or /south."
   function doorsText(room) {
-    const ways = DIRECTIONS.filter((d) => room.doors[d])
+    const ways = DIRECTIONS.filter((d) => room.doors[d] && room.doors[d] !== SECRET)
     if (ways.length === 0) return ''
     const list = (dirs) => (dirs.length === 1 ? dirs[0] : `${dirs.slice(0, -1).join(', ')} and ${dirs[dirs.length - 1]}`)
     const kinds = [
@@ -253,6 +259,11 @@ module.exports = function setupSnowQueen(bot, { ROOMS }) {
         return ctx.reply(`There is no way ${direction} from here.${room ? ` ${doorsText(room)}` : ''}`)
       }
       const target = room.doors[direction]
+      if (target === SECRET) {
+        return ctx.reply("That isn't a door, but the wall feels wobbly.", {
+          reply_markup: { inline_keyboard: [[{ text: 'Push the wall', callback_data: 'sq:grand' }]] },
+        })
+      }
       if (target === WINDOW || target === OUTSIDE) return leaveKeep(ctx.chat.id, ctx.from, target, room)
       return enterRoom(ctx.chat.id, ctx.from, target)
     })
