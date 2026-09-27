@@ -61,11 +61,11 @@ const SCENES = {
 const WINDOW = 'window'
 const OUTSIDE = 'outside'
 const MAP = {
-  1: { doors: { east: '32', west: '2', south: WINDOW } },
+  1: { doors: { east: '30', west: '2', south: OUTSIDE }, exit: 'You push open the front doors and step back out into the snow.' },
   2: { doors: { east: '1', west: '3', south: WINDOW } },
   3: { doors: { east: '2', west: '4', south: WINDOW } },
   4: { doors: { east: '3', west: '5', north: '6', south: WINDOW } },
-  5: { doors: { east: '4', north: '7', west: WINDOW, south: OUTSIDE }, text: 'A window looks out to the west, and in the south corner the broken wall opens to the outside.' },
+  5: { doors: { east: '4', north: '7', west: WINDOW, south: OUTSIDE }, text: 'A window looks out to the west, and in the south corner the broken wall opens to the outside.', exit: 'You squeeze out through the broken corner and find yourself outside the keep again.' },
   6: { doors: { west: '7', north: '8' } },
   7: { doors: { north: '9', east: '6', west: WINDOW } },
   8: { doors: { west: '9', north: '10' } },
@@ -79,7 +79,19 @@ const MAP = {
   16: { doors: { east: '17', north: WINDOW } },
   17: { doors: { north: WINDOW, east: '18' } },
   18: { doors: { north: WINDOW, east: '19' } },
-  // rooms 19-32 are still to be written
+  19: { doors: { north: WINDOW, east: '20' } },
+  20: { doors: { north: WINDOW, east: '21' } },
+  21: { doors: { north: WINDOW, east: '22' } },
+  22: { doors: { north: WINDOW, east: WINDOW, south: '23' } },
+  23: { doors: { east: WINDOW, south: '24' } },
+  24: { doors: { east: WINDOW, south: '25' } },
+  25: { doors: { east: WINDOW, south: '26' } },
+  26: { doors: { east: WINDOW, south: '27' } },
+  27: { doors: { east: WINDOW, south: WINDOW, west: '28' } },
+  28: { doors: { south: WINDOW, west: '29' } },
+  29: { doors: { south: WINDOW, west: '30' } },
+  30: { doors: { south: WINDOW, west: '1' } },
+  // rooms 31 and 32 are still to be written
 }
 const DIRECTIONS = ['north', 'east', 'south', 'west']
 const OPPOSITE = { north: 'south', south: 'north', east: 'west', west: 'east' }
@@ -205,12 +217,12 @@ module.exports = function setupSnowQueen(bot, { ROOMS }) {
     return `There ${kinds[0][1].length === 1 ? 'is' : 'are'} ${described}. Type ${commands.length === 1 ? commands[0] : `${commands.slice(0, -1).join(', ')} or ${commands[commands.length - 1]}`}.`
   }
 
-  // through a window or the broken corner: back outside the keep, choosing the way in again
-  async function leaveKeep(chatId, from, how) {
+  // through a window or a way out (the room's exit text): back outside the keep, choosing the way in again
+  async function leaveKeep(chatId, from, how, room) {
     db.prepare('DELETE FROM snowqueen_positions WHERE user_id = ?').run(String(from.id))
     await bot.telegram.sendMessage(chatId, how === WINDOW
       ? 'You climb through the window and drop down into the snow outside the keep.'
-      : 'You squeeze out through the broken corner and find yourself outside the keep again.')
+      : room.exit || 'You step back outside the keep.')
     return sendScene(chatId, from, 'castle')
   }
 
@@ -241,7 +253,7 @@ module.exports = function setupSnowQueen(bot, { ROOMS }) {
         return ctx.reply(`There is no way ${direction} from here.${room ? ` ${doorsText(room)}` : ''}`)
       }
       const target = room.doors[direction]
-      if (target === WINDOW || target === OUTSIDE) return leaveKeep(ctx.chat.id, ctx.from, target)
+      if (target === WINDOW || target === OUTSIDE) return leaveKeep(ctx.chat.id, ctx.from, target, room)
       return enterRoom(ctx.chat.id, ctx.from, target)
     })
   }
