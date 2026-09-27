@@ -1,8 +1,13 @@
 // Quest to the Tavern (@questtotavern_bot): from the Quests Chamber to the Tavern with Dwelryn.
 // Ported from textventures/tavernbot.
 const { playerName } = require("../lib/rooms");
+const setupSnowQueen = require("./snowqueen");
 
 module.exports = function setupTavern(bot, { announce, ROOMS }) {
+
+// Dwelryn's Snow Queen calls in the tavern. First, so /start sq_<id> from its button reaches it
+// before this story's own /start.
+setupSnowQueen(bot, { ROOMS });
 
 bot.command("respawn", (ctx) => {
   ctx.telegram.sendMessage(

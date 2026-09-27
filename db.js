@@ -25,6 +25,21 @@ db.exec(`
     PRIMARY KEY (chat_id, address)
   );
 
+  -- Dwelryn's Snow Queen calls in the tavern: when each is due, the group message, and who answered it
+  CREATE TABLE IF NOT EXISTS snowqueen_calls (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    due_at INTEGER NOT NULL,
+    posted_at INTEGER,
+    skipped INTEGER NOT NULL DEFAULT 0,
+    chat_id TEXT,
+    message_id INTEGER,
+    claimed_by TEXT,
+    claimed_name TEXT,
+    claimed_at INTEGER,
+    started_at INTEGER,
+    closed_at INTEGER
+  );
+
   CREATE TABLE IF NOT EXISTS signin_tokens (
     token TEXT PRIMARY KEY,
     chat_id TEXT NOT NULL,
