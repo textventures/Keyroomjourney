@@ -76,7 +76,10 @@ const MAP = {
   13: { doors: { north: '15', west: WINDOW } },
   14: { doors: { north: WINDOW, east: '16', west: '15' } },
   15: { doors: { north: WINDOW, west: WINDOW } },
-  // rooms 16-32 are still to be written
+  16: { doors: { east: '17', north: WINDOW } },
+  17: { doors: { north: WINDOW, east: '18' } },
+  18: { doors: { north: WINDOW, east: '19' } },
+  // rooms 19-32 are still to be written
 }
 const DIRECTIONS = ['north', 'east', 'south', 'west']
 const OPPOSITE = { north: 'south', south: 'north', east: 'west', west: 'east' }
