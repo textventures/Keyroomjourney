@@ -40,6 +40,13 @@ db.exec(`
     closed_at INTEGER
   );
 
+  -- which room of the Snow Queen's castle keep each player is in (moved with /east, /west, ...)
+  CREATE TABLE IF NOT EXISTS snowqueen_positions (
+    user_id TEXT PRIMARY KEY,
+    room TEXT,
+    updated_at INTEGER NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS signin_tokens (
     token TEXT PRIMARY KEY,
     chat_id TEXT NOT NULL,

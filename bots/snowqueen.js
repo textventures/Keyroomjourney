@@ -38,7 +38,11 @@ const SCENES = {
     ],
   },
   castle: {
-    text: 'You leave the road and climb toward the ruined keep...\n\nThe rest of this journey is still being written.',
+    text: 'You leave the road and climb toward the ruined keep. At the front gates two large doors lead inside, but to the west there is a breached wall that looks big enough to slip through.',
+    choices: [
+      { text: 'Go through the front doors', room: '1' },
+      { text: 'Slip through the breached wall', room: '5' },
+    ],
   },
   turnback: {
     text: 'You turn back toward the lights of the town. Dwelryn watches you go without a word, then walks on toward the keep alone.',
@@ -48,6 +52,17 @@ const SCENES = {
     ],
   },
 }
+
+// Inside the castle keep players move by typing /east, /west, /north or /south. doors maps each
+// direction to the room it leads to; text is optional (a room without it just names its doors).
+const KEEP = {
+  1: { doors: { east: '32', west: '2' } },
+  2: { doors: { east: '1', west: '3' } },
+  3: { doors: { east: '2', west: '4' } },
+  4: { doors: { east: '3', west: '5', north: '6' } },
+  // rooms 5, 6 and 32 are still to be written
+}
+const DIRECTIONS = ['north', 'east', 'south', 'west']
 
 const now = () => Math.floor(Date.now() / 1000)
 
@@ -128,9 +143,49 @@ module.exports = function setupSnowQueen(bot, { ROOMS }) {
     if (scene.death) announce(ROOMS.CEMETERY, `UserName: ${playerName(from)} ${scene.death}`)
     if (scene.log) announce(ROOMS.LOGGER, `UserName: ${playerName(from)} ${scene.log}`)
     if (scene.win) announce(ROOMS.LOGGER, `UserName: ${playerName(from)} saved the Snow Queen`)
-    const button = (c) => (c.url ? { text: c.text, url: c.url } : { text: c.text, callback_data: `sq:${c.next}` })
+    const button = (c) => {
+      if (c.url) return { text: c.text, url: c.url }
+      if (c.room) return { text: c.text, callback_data: `sq_room:${c.room}` }
+      return { text: c.text, callback_data: `sq:${c.next}` }
+    }
     const extra = scene.choices ? { reply_markup: { inline_keyboard: [scene.choices.map(button)] } } : {}
     return bot.telegram.sendMessage(chatId, scene.text, extra)
+  }
+
+  function doorsText(room) {
+    const doors = DIRECTIONS.filter((d) => room.doors[d])
+    if (doors.length === 0) return ''
+    const names = doors.length === 1 ? `a door to the ${doors[0]}` : `doors to the ${doors.slice(0, -1).join(', ')} and ${doors[doors.length - 1]}`
+    return `There ${doors.length === 1 ? 'is' : 'are'} ${names}. Type ${doors.map((d) => `/${d}`).join(' or ')} to go through a door.`
+  }
+
+  function enterRoom(chatId, from, id) {
+    db.prepare(`
+      INSERT INTO snowqueen_positions (user_id, room, updated_at) VALUES (?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET room = excluded.room, updated_at = excluded.updated_at
+    `).run(String(from.id), id, now())
+    const room = KEEP[id]
+    if (!room) return bot.telegram.sendMessage(chatId, `Room ${id}\n\nThis part of the keep is still being written.`)
+    return bot.telegram.sendMessage(chatId, `Room ${id}\n\n${room.text ? `${room.text}\n\n` : ''}${doorsText(room)}`.trim())
+  }
+
+  bot.action(/^sq_room:(\w+)$/, (ctx) => {
+    ctx.answerCbQuery()
+    return enterRoom(ctx.chat.id, ctx.from, ctx.match[1])
+  })
+
+  // /east, /west, ... move a player who is inside the keep
+  for (const direction of DIRECTIONS) {
+    bot.command(direction, (ctx) => {
+      if (ctx.chat.type !== 'private') return
+      const position = db.prepare('SELECT room FROM snowqueen_positions WHERE user_id = ?').get(String(ctx.from.id))
+      if (!position || !position.room) return ctx.reply('There are no doors here.')
+      const room = KEEP[position.room]
+      if (!room || !room.doors[direction]) {
+        return ctx.reply(`There is no door to the ${direction} here.${room ? ` ${doorsText(room)}` : ''}`)
+      }
+      return enterRoom(ctx.chat.id, ctx.from, room.doors[direction])
+    })
   }
 
   // "I'll go!": the first tap claims the call, the call message changes, and the player is sent to a
@@ -159,6 +214,8 @@ module.exports = function setupSnowQueen(bot, { ROOMS }) {
       return ctx.reply("Dwelryn looks you up and down. \"You're not the one who answered my call.\" Watch the tavern for his next call.")
     }
     if (!call.started_at) db.prepare('UPDATE snowqueen_calls SET started_at = ? WHERE id = ?').run(now(), call.id)
+    // a new journey starts outside the keep
+    db.prepare('DELETE FROM snowqueen_positions WHERE user_id = ?').run(String(ctx.from.id))
     return sendScene(ctx.chat.id, ctx.from, 'start')
   })
 
