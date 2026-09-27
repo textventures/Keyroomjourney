@@ -47,6 +47,14 @@ db.exec(`
     updated_at INTEGER NOT NULL
   );
 
+  -- the step (count of rooms entered this quest) at which each player last entered each keep room
+  CREATE TABLE IF NOT EXISTS snowqueen_visits (
+    user_id TEXT NOT NULL,
+    room TEXT NOT NULL,
+    last_step INTEGER NOT NULL,
+    PRIMARY KEY (user_id, room)
+  );
+
   CREATE TABLE IF NOT EXISTS signin_tokens (
     token TEXT PRIMARY KEY,
     chat_id TEXT NOT NULL,
@@ -63,6 +71,11 @@ if (!db.prepare('PRAGMA table_info(signin_tokens)').all().some((column) => colum
 // when a Snow Queen quest was won, so it can only be won (and announced in the tavern) once
 if (!db.prepare('PRAGMA table_info(snowqueen_calls)').all().some((column) => column.name === 'won_at')) {
   db.exec('ALTER TABLE snowqueen_calls ADD COLUMN won_at INTEGER');
+}
+
+// how many keep rooms each player has entered this quest, for "the room seems familiar"
+if (!db.prepare('PRAGMA table_info(snowqueen_positions)').all().some((column) => column.name === 'steps')) {
+  db.exec('ALTER TABLE snowqueen_positions ADD COLUMN steps INTEGER NOT NULL DEFAULT 0');
 }
 
 // which bot a sign-in link came from, so that bot carries on after sign-in (empty means Keyroom)

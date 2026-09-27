@@ -100,7 +100,7 @@ const MAP = {
   2: { doors: { east: '1', west: '3', south: WINDOW, north: SECRET } },
   3: { doors: { east: '2', west: '4', south: WINDOW, north: SECRET } },
   4: { doors: { east: '3', west: '5', north: '6', south: WINDOW } },
-  5: { doors: { east: '4', north: '7', west: WINDOW, south: OUTSIDE }, text: 'A window looks out to the west, and in the south corner the broken wall opens to the outside.', exit: 'You squeeze out through the broken corner and find yourself outside the keep again.' },
+  5: { doors: { east: '4', north: '7', west: WINDOW, south: OUTSIDE }, exit: 'You squeeze out through the broken corner and find yourself outside the keep again.' },
   6: { doors: { west: '7', north: '8', east: SECRET } },
   7: { doors: { north: '9', east: '6', west: WINDOW } },
   8: { doors: { west: '9', north: '10', east: SECRET } },
@@ -128,14 +128,51 @@ const MAP = {
   30: { doors: { south: WINDOW, west: '1', north: SECRET } },
   // rooms 31 and 32 are still to be written
 }
+// what each room looks like; the list of its doors follows
+const DESCRIPTIONS = {
+  1: 'The entrance hall. Snow has drifted in under the great front doors, and rusted suits of armour stand guard along the walls.',
+  2: 'An old guardroom. A card game sits unfinished on the table, the cards frozen to the wood.',
+  3: 'An armoury stripped almost bare. Empty racks line the walls and a single broken spear lies on the floor.',
+  4: 'A cold kitchen. Pots hang over a hearth that hasn\'t seen a fire in years, and icicles drip from the ceiling.',
+  5: 'The corner of the keep where the outer wall has collapsed. Rubble and snow cover the floor, and in the south corner the broken wall opens to the outside.',
+  6: 'A narrow chapel. The pews are toppled and frost has painted strange patterns across the stained glass.',
+  7: 'The servants\' quarters. Rows of narrow beds stand along the walls, their blankets stiff with frost.',
+  8: 'A library. Most of the books have rotted away, but one shelf of blue leather volumes looks oddly new.',
+  9: 'A storeroom full of empty barrels. Something has been gnawing at the corners.',
+  10: 'A trophy room. The mounted heads of great beasts stare down at you, their glass eyes glinting in the gloom.',
+  11: 'A washroom with a cracked stone basin. The water in it has frozen solid around a single silver ring.',
+  12: 'A map room. A great table shows the whole kingdom, and someone has drawn a blue circle around this keep.',
+  13: 'A stairwell whose stairs have crumbled away. Wind whistles down from somewhere far above.',
+  14: 'A gallery of portraits. Every face has been scratched out except one: a wizard in blue robes.',
+  15: 'The north-west corner of the keep. Snow blows in from two sides and piles up in soft drifts.',
+  16: 'A banquet hall. Plates and goblets are still laid out, dusted with snow like sugar.',
+  17: 'A music room. A harp stands in the corner, and when the wind blows its strings hum on their own.',
+  18: 'A bedchamber with a great canopied bed, its curtains torn to ribbons.',
+  19: 'A dressing room. Gowns of white and silver hang in rows, all of them frozen stiff.',
+  20: 'An observatory. A brass telescope points at the night sky through a broken window.',
+  21: 'A throne room. The throne is carved from ice, and a cracked crown lies on its steps.',
+  22: 'The north-east tower. Wind howls in from two sides.',
+  23: 'A chamber lined with cages, every one of them empty and open.',
+  24: 'An alchemist\'s workshop. Blue potions bubble quietly on the bench, as if someone left only moments ago.',
+  25: 'A long hall of frozen mirrors. Your reflection seems a moment slow to follow you.',
+  26: 'A kennel. Chains hang from the walls, and huge paw prints lead away through the snow.',
+  27: 'The south-east corner of the keep. Snow drifts in from two sides.',
+  28: 'A tapestry room. The tapestries show a queen of snow and ice, and a wizard in blue.',
+  29: 'A counting room. Coins are scattered across the floor, and someone has scrawled on the wall: "BUY ALL THE URLS".',
+  30: 'A cloakroom. Heavy fur cloaks hang on hooks, and one lies on the floor as if it was dropped in a hurry.',
+}
+// "The room seems familiar" when a player comes back to a room after passing through at least this many
+// other rooms since they were last in it
+const FAMILIAR_AFTER = 5
+
 const DIRECTIONS = ['north', 'east', 'south', 'west']
-const OPPOSITE = { north: 'south', south: 'north', east: 'west', west: 'east' }
+const OPPOSITE ={ north: 'south', south: 'north', east: 'west', west: 'east' }
 
 // MAP plus the way back through every door. Doors that disagree (room 1 east -> 2, but room 2 west
 // -> 3) are logged at startup and the room's own listing wins.
 function buildKeep(map) {
   const keep = {}
-  for (const [id, room] of Object.entries(map)) keep[id] = { ...room, doors: { ...room.doors } }
+  for (const [id, room] of Object.entries(map)) keep[id] = { text: DESCRIPTIONS[id], ...room, doors: { ...room.doors } }
   for (const [id, room] of Object.entries(map)) {
     for (const [dir, to] of Object.entries(room.doors)) {
       if (to === WINDOW || to === OUTSIDE || to === SECRET || !keep[to] || (room.oneWay || []).includes(dir)) continue
@@ -233,13 +270,13 @@ module.exports = function setupSnowQueen(bot, { ROOMS }) {
     if (scene.log) announce(ROOMS.LOGGER, `UserName: ${playerName(from)} ${scene.log}`)
     if (scene.respawn) {
       announce(ROOMS.RESPAWN, `UserName: ${playerName(from)} ${scene.respawn}`)
-      db.prepare('DELETE FROM snowqueen_positions WHERE user_id = ?').run(String(from.id))
+      leaveRoom(from.id)
     }
     if (scene.win) {
       // the quest is over: record it, so it can't be won (and announced in the tavern) again
       const call = activeCall(from.id)
       if (call) db.prepare('UPDATE snowqueen_calls SET won_at = ? WHERE id = ?').run(now(), call.id)
-      db.prepare('DELETE FROM snowqueen_positions WHERE user_id = ?').run(String(from.id))
+      leaveRoom(from.id)
       announce(ROOMS.LOGGER, `UserName: ${playerName(from)} saved the Snow Queen`)
     }
     if (scene.tavern && TAVERN_GROUP) {
@@ -273,22 +310,38 @@ module.exports = function setupSnowQueen(bot, { ROOMS }) {
 
   // through a window or a way out (the room's exit text): back outside the keep, choosing the way in again
   async function leaveKeep(chatId, from, how, room) {
-    db.prepare('DELETE FROM snowqueen_positions WHERE user_id = ?').run(String(from.id))
+    leaveRoom(from.id)
     await bot.telegram.sendMessage(chatId, how === WINDOW
       ? 'You climb through the window and drop down into the snow outside the keep.'
       : room.exit || 'You step back outside the keep.')
     return sendScene(chatId, from, 'castle')
   }
 
+  // the player is outside the keep (or the quest is over); their visits so far are kept
+  function leaveRoom(userId) {
+    db.prepare('UPDATE snowqueen_positions SET room = NULL, updated_at = ? WHERE user_id = ?').run(now(), String(userId))
+  }
+
   function enterRoom(chatId, from, id) {
     const room = KEEP[id]
     // a room that isn't written yet: the player stays where they were
     if (!room) return bot.telegram.sendMessage(chatId, `That door is stuck fast. (Room ${id} is still being written.)`)
+    const userId = String(from.id)
+    const position = db.prepare('SELECT steps FROM snowqueen_positions WHERE user_id = ?').get(userId)
+    const step = (position ? position.steps : 0) + 1
+    const visit = db.prepare('SELECT last_step FROM snowqueen_visits WHERE user_id = ? AND room = ?').get(userId, id)
+    // been here before, with at least FAMILIAR_AFTER other rooms in between
+    const familiar = visit && step - visit.last_step - 1 >= FAMILIAR_AFTER
     db.prepare(`
-      INSERT INTO snowqueen_positions (user_id, room, updated_at) VALUES (?, ?, ?)
-      ON CONFLICT(user_id) DO UPDATE SET room = excluded.room, updated_at = excluded.updated_at
-    `).run(String(from.id), id, now())
-    return bot.telegram.sendMessage(chatId, `Room ${id}\n\n${room.text ? `${room.text}\n\n` : ''}${doorsText(room)}`.trim())
+      INSERT INTO snowqueen_positions (user_id, room, updated_at, steps) VALUES (?, ?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET room = excluded.room, updated_at = excluded.updated_at, steps = excluded.steps
+    `).run(userId, id, now(), step)
+    db.prepare(`
+      INSERT INTO snowqueen_visits (user_id, room, last_step) VALUES (?, ?, ?)
+      ON CONFLICT(user_id, room) DO UPDATE SET last_step = excluded.last_step
+    `).run(userId, id, step)
+    const description = room.text ? `${room.text}${familiar ? ' The room seems familiar.' : ''}\n\n` : ''
+    return bot.telegram.sendMessage(chatId, `Room ${id}\n\n${description}${doorsText(room)}`.trim())
   }
 
   const QUEST_OVER = "Dwelryn's call has ended. Watch the tavern for his next one."
@@ -346,8 +399,9 @@ module.exports = function setupSnowQueen(bot, { ROOMS }) {
       return ctx.reply("Dwelryn looks you up and down. \"You're not the one who answered my call.\" Watch the tavern for his next call.")
     }
     if (!call.started_at) db.prepare('UPDATE snowqueen_calls SET started_at = ? WHERE id = ?').run(now(), call.id)
-    // a new journey starts outside the keep
+    // a new journey starts outside the keep, with no rooms visited yet
     db.prepare('DELETE FROM snowqueen_positions WHERE user_id = ?').run(String(ctx.from.id))
+    db.prepare('DELETE FROM snowqueen_visits WHERE user_id = ?').run(String(ctx.from.id))
     return sendScene(ctx.chat.id, ctx.from, 'start')
   })
 
