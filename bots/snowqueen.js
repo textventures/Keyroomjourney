@@ -309,7 +309,12 @@ module.exports = function setupSnowQueen(bot, { ROOMS }) {
   // when a new call goes up, every earlier adventurer's quest ends and fades from memory. Anyone still
   // playing gets sleepy, lies down, and wakes up outside the tavern.
   async function fadeOldQuests() {
-    const players = db.prepare('SELECT DISTINCT user_id FROM snowqueen_messages').all().map((r) => r.user_id)
+    // players with a conversation to erase, and anyone still on a quest (even with nothing recorded)
+    const players = db.prepare(`
+      SELECT user_id FROM snowqueen_messages
+      UNION
+      SELECT claimed_by FROM snowqueen_calls WHERE claimed_by IS NOT NULL AND won_at IS NULL AND ended_at IS NULL
+    `).all().map((r) => r.user_id)
     for (const userId of players) {
       const stillPlaying = db.prepare('UPDATE snowqueen_calls SET ended_at = ? WHERE claimed_by = ? AND won_at IS NULL AND ended_at IS NULL').run(now(), userId).changes > 0
       leaveRoom(userId)
