@@ -55,6 +55,14 @@ db.exec(`
     PRIMARY KEY (user_id, room)
   );
 
+  -- every Snow Queen message in a player's private chat (theirs and the bot's), so the conversation can
+  -- be erased when they give up or the next call goes up
+  CREATE TABLE IF NOT EXISTS snowqueen_messages (
+    user_id TEXT NOT NULL,
+    message_id INTEGER NOT NULL,
+    PRIMARY KEY (user_id, message_id)
+  );
+
   CREATE TABLE IF NOT EXISTS signin_tokens (
     token TEXT PRIMARY KEY,
     chat_id TEXT NOT NULL,

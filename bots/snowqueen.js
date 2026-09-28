@@ -19,6 +19,11 @@ const CALL_TEXT = 'Dwelryn the Journeyman bangs his tankard on the bar. "Are the
 
 const TAVERN_LINK = 'https://t.me/joinchat/H9mfqFY7eIDpQRg8HNUd3A'
 
+// what's left of a quest once its conversation has been erased
+const HAZY = "My memory of my time in the keep is hazy. I don't know if it was real or a dream."
+// for a player still on their quest when Dwelryn's next call goes up
+const SLEEPY = `You are feeling sleepy from all the walking, so you lie down for a rest.\n\nYou wake up outside the tavern. ${HAZY}`
+
 // The quest, one scene per step. Each choice leads to another scene (next), into a room of the keep
 // (room) or opens a link (url). death is how the player died (posted to the cemetery), log is a
 // milestone for the logger, respawn goes to the respawn room, win marks saving the Snow Queen (which
@@ -251,6 +256,7 @@ module.exports = function setupSnowQueen(bot, { ROOMS }) {
     db.prepare('UPDATE snowqueen_calls SET posted_at = ?, chat_id = ?, message_id = ?, text = ? WHERE id = ?')
       .run(now(), String(TAVERN_GROUP), message.message_id, text, call.id)
     console.log(`[snowqueen] posted call ${call.id} in the tavern`)
+    await fadeOldQuests()
   }
 
   async function tick() {
@@ -271,6 +277,49 @@ module.exports = function setupSnowQueen(bot, { ROOMS }) {
     }
   }
 
+  // --- the quest conversation, which fades like a dream when the player gives up or the next call goes up
+
+  function remember(userId, messageId) {
+    db.prepare('INSERT OR IGNORE INTO snowqueen_messages (user_id, message_id) VALUES (?, ?)').run(String(userId), messageId)
+  }
+
+  // a Snow Queen message in the player's private chat (where the chat id is the player's id), recorded
+  // so it can be erased later
+  async function say(chatId, text, extra = {}) {
+    const message = await bot.telegram.sendMessage(chatId, text, extra)
+    remember(chatId, message.message_id)
+    return message
+  }
+
+  // deletes every recorded message of the player's quest (bots can delete both sides of a private chat
+  // for 48 hours)
+  async function eraseConversation(userId) {
+    const ids = db.prepare('SELECT message_id FROM snowqueen_messages WHERE user_id = ?').all(String(userId)).map((r) => r.message_id)
+    for (let i = 0; i < ids.length; i += 100) {
+      const chunk = ids.slice(i, i + 100)
+      try {
+        await bot.telegram.callApi('deleteMessages', { chat_id: userId, message_ids: chunk })
+      } catch (error) {
+        for (const id of chunk) await bot.telegram.deleteMessage(userId, id).catch(() => {})
+      }
+    }
+    db.prepare('DELETE FROM snowqueen_messages WHERE user_id = ?').run(String(userId))
+  }
+
+  // when a new call goes up, every earlier adventurer's quest ends and fades from memory. Anyone still
+  // playing gets sleepy, lies down, and wakes up outside the tavern.
+  async function fadeOldQuests() {
+    const players = db.prepare('SELECT DISTINCT user_id FROM snowqueen_messages').all().map((r) => r.user_id)
+    for (const userId of players) {
+      const stillPlaying = db.prepare('UPDATE snowqueen_calls SET ended_at = ? WHERE claimed_by = ? AND won_at IS NULL AND ended_at IS NULL').run(now(), userId).changes > 0
+      leaveRoom(userId)
+      await eraseConversation(userId)
+      const extra = stillPlaying ? { reply_markup: { inline_keyboard: [[{ text: 'Back to the tavern', url: TAVERN_LINK }]] } } : {}
+      await bot.telegram.sendMessage(userId, stillPlaying ? SLEEPY : HAZY, extra)
+        .catch((error) => console.log(`[snowqueen] couldn't message ${userId}: ${error.description || error.message}`))
+    }
+  }
+
   // the player's current quest: the latest call they claimed that they haven't won or given up yet
   function activeCall(userId) {
     return db.prepare('SELECT * FROM snowqueen_calls WHERE claimed_by = ? AND won_at IS NULL AND ended_at IS NULL ORDER BY claimed_at DESC LIMIT 1').get(String(userId))
@@ -288,7 +337,7 @@ module.exports = function setupSnowQueen(bot, { ROOMS }) {
     setTimeout(tick, (RECALL_DELAY + 1) * 1000)
   }
 
-  function sendScene(chatId, from, id) {
+  async function sendScene(chatId, from, id) {
     const scene = SCENES[id]
     if (!scene) return
     if (scene.death) announce(ROOMS.CEMETERY, `UserName: ${playerName(from)} ${scene.death}`)
@@ -304,7 +353,6 @@ module.exports = function setupSnowQueen(bot, { ROOMS }) {
       leaveRoom(from.id)
       announce(ROOMS.LOGGER, `UserName: ${playerName(from)} saved the Snow Queen`)
     }
-    if (scene.defeated) defeat(from, scene.defeated)
     if (scene.tavern && TAVERN_GROUP) {
       bot.telegram.sendMessage(TAVERN_GROUP, scene.tavern(playerName(from)))
         .catch((error) => console.log(`[snowqueen] couldn't post in the tavern: ${error.description || error.message}`))
@@ -315,7 +363,13 @@ module.exports = function setupSnowQueen(bot, { ROOMS }) {
       return { text: c.text, callback_data: `sq:${c.next}` }
     }
     const extra = scene.choices ? { reply_markup: { inline_keyboard: [scene.choices.map(button)] } } : {}
-    return bot.telegram.sendMessage(chatId, scene.text, extra)
+    if (scene.defeated) {
+      // giving up: the whole conversation fades, leaving just this (which isn't erased later)
+      defeat(from, scene.defeated)
+      await eraseConversation(from.id)
+      return bot.telegram.sendMessage(chatId, `${scene.text}\n\n${HAZY}`, extra)
+    }
+    return say(chatId, scene.text, extra)
   }
 
   // "There are doors to the north and east, and a window to the south. Type /north, /east or /south."
@@ -337,7 +391,7 @@ module.exports = function setupSnowQueen(bot, { ROOMS }) {
   // through a window or a way out (the room's exit text): back outside the keep, choosing the way in again
   async function leaveKeep(chatId, from, how, room) {
     leaveRoom(from.id)
-    await bot.telegram.sendMessage(chatId, how === WINDOW
+    await say(chatId, how === WINDOW
       ? 'You climb through the window and drop down into the snow outside the keep.'
       : room.exit || 'You step back outside the keep.')
     return sendScene(chatId, from, 'castle')
@@ -351,7 +405,7 @@ module.exports = function setupSnowQueen(bot, { ROOMS }) {
   function enterRoom(chatId, from, id) {
     const room = KEEP[id]
     // a room that isn't written yet: the player stays where they were
-    if (!room) return bot.telegram.sendMessage(chatId, `That door is stuck fast. (Room ${id} is still being written.)`)
+    if (!room) return say(chatId, `That door is stuck fast. (Room ${id} is still being written.)`)
     const userId = String(from.id)
     const position = db.prepare('SELECT steps FROM snowqueen_positions WHERE user_id = ?').get(userId)
     const step = (position ? position.steps : 0) + 1
@@ -367,7 +421,7 @@ module.exports = function setupSnowQueen(bot, { ROOMS }) {
       ON CONFLICT(user_id, room) DO UPDATE SET last_step = excluded.last_step
     `).run(userId, id, step)
     const description = room.text ? `${room.text}${familiar ? ' The room seems familiar.' : ''}\n\n` : ''
-    return bot.telegram.sendMessage(chatId, `Room ${id}\n\n${description}${doorsText(room)}`.trim())
+    return say(chatId, `Room ${id}\n\n${description}${doorsText(room)}`.trim())
   }
 
   const QUEST_OVER = "Dwelryn's call has ended. Watch the tavern for his next one."
@@ -382,15 +436,19 @@ module.exports = function setupSnowQueen(bot, { ROOMS }) {
   for (const direction of DIRECTIONS) {
     bot.command(direction, (ctx) => {
       if (ctx.chat.type !== 'private') return
+      // during a quest, the player's command and the reply are part of the conversation that fades later
+      const onQuest = !!activeCall(ctx.from.id)
+      if (onQuest) remember(ctx.from.id, ctx.message.message_id)
+      const reply = (text, extra) => (onQuest ? say(ctx.chat.id, text, extra) : ctx.reply(text, extra))
       const position = db.prepare('SELECT room FROM snowqueen_positions WHERE user_id = ?').get(String(ctx.from.id))
-      if (!position || !position.room) return ctx.reply('There are no doors here.')
+      if (!position || !position.room) return reply('There are no doors here.')
       const room = KEEP[position.room]
       if (!room || !room.doors[direction]) {
-        return ctx.reply(`There is no way ${direction} from here.${room ? ` ${doorsText(room)}` : ''}`)
+        return reply(`There is no way ${direction} from here.${room ? ` ${doorsText(room)}` : ''}`)
       }
       const target = room.doors[direction]
       if (target === SECRET) {
-        return ctx.reply("That isn't a door, but the wall feels wobbly.", {
+        return reply("That isn't a door, but the wall feels wobbly.", {
           reply_markup: { inline_keyboard: [[{ text: 'Push the wall', callback_data: 'sq:grand' }]] },
         })
       }
@@ -425,7 +483,10 @@ module.exports = function setupSnowQueen(bot, { ROOMS }) {
     if (!call || call.claimed_by !== String(ctx.from.id)) {
       return ctx.reply("Dwelryn looks you up and down. \"You're not the one who answered my call.\" Watch the tavern for his next call.")
     }
+    // an old link to a quest that's over (won, given up, or faded when the next call went up)
+    if (call.won_at || call.ended_at) return ctx.reply(QUEST_OVER)
     if (!call.started_at) db.prepare('UPDATE snowqueen_calls SET started_at = ? WHERE id = ?').run(now(), call.id)
+    remember(ctx.from.id, ctx.message.message_id)
     // a new journey starts outside the keep, with no rooms visited yet
     db.prepare('DELETE FROM snowqueen_positions WHERE user_id = ?').run(String(ctx.from.id))
     db.prepare('DELETE FROM snowqueen_visits WHERE user_id = ?').run(String(ctx.from.id))
