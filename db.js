@@ -73,6 +73,14 @@ if (!db.prepare('PRAGMA table_info(snowqueen_calls)').all().some((column) => col
   db.exec('ALTER TABLE snowqueen_calls ADD COLUMN won_at INTEGER');
 }
 
+// Snow Queen calls: ended_at is when a player gave up (returned to the tavern), text is what the call
+// said, extra marks calls outside the two a day (manual ones, or a new call after someone gives up)
+for (const [column, type] of [['ended_at', 'INTEGER'], ['text', 'TEXT'], ['extra', 'INTEGER NOT NULL DEFAULT 0']]) {
+  if (!db.prepare('PRAGMA table_info(snowqueen_calls)').all().some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE snowqueen_calls ADD COLUMN ${column} ${type}`);
+  }
+}
+
 // how many keep rooms each player has entered this quest, for "the room seems familiar"
 if (!db.prepare('PRAGMA table_info(snowqueen_positions)').all().some((column) => column.name === 'steps')) {
   db.exec('ALTER TABLE snowqueen_positions ADD COLUMN steps INTEGER NOT NULL DEFAULT 0');

@@ -22,7 +22,8 @@ const TAVERN_LINK = 'https://t.me/joinchat/H9mfqFY7eIDpQRg8HNUd3A'
 // The quest, one scene per step. Each choice leads to another scene (next), into a room of the keep
 // (room) or opens a link (url). death is how the player died (posted to the cemetery), log is a
 // milestone for the logger, respawn goes to the respawn room, win marks saving the Snow Queen (which
-// ends the quest), and tavern(name) is posted in the tavern.
+// ends the quest), tavern(name) is posted in the tavern, and defeated ends the quest without winning:
+// defeated.log goes to the logger and defeated.call(name) is a new call in the tavern a minute later.
 const SCENES = {
   start: {
     text: 'Dwelryn leads you out of the tavern and through the town without saying a word. Only when the town is behind you and the forest closes in around the road does his mood brighten.\n\n"I am only happy when I am on a journey," he tells you. "North, East, South and West are my only friends and my only family."\n\nHe looks over at you. "When are you most happy?"',
@@ -43,6 +44,15 @@ const SCENES = {
     choices: [
       { text: 'Go through the front doors', room: '1' },
       { text: 'Slip through the breached wall', room: '5' },
+      { text: 'Return to the tavern', next: 'retreat' },
+    ],
+  },
+  // giving up outside the keep: ends the quest, and Dwelryn calls for someone else a minute later
+  retreat: {
+    text: 'You turn your back on the keep and trudge down the hill, all the way back to the tavern. The Snow Queen will have to wait for a braver adventurer.',
+    defeated: { log: 'returned to the tavern defeated', call: (name) => `Dwelryn stumbles back into the tavern alone. "${name} has been defeated!" He bangs his tankard on the bar. "Are there any brave adventurers willing to chance their life to save the beautiful Snow Queen?"` },
+    choices: [
+      { text: 'Back to the tavern', url: TAVERN_LINK },
     ],
   },
   // reached by pushing a wobbly inner wall: north of rooms 1-3 and 28-30, east of 6, 8, 10 and 12,
@@ -68,6 +78,7 @@ const SCENES = {
     choices: [
       { text: 'Go through the front doors', room: '1' },
       { text: 'Slip through the breached wall', room: '5' },
+      { text: 'Return to the tavern', next: 'retreat' },
     ],
   },
   rope: {
@@ -80,7 +91,7 @@ const SCENES = {
   },
   turnback: {
     text: 'You turn back toward the lights of the town. Dwelryn watches you go without a word, then walks on toward the keep alone.',
-    log: 'turned back before the Castle Keep',
+    defeated: { log: 'turned back before the Castle Keep', call: (name) => `Dwelryn stomps back into the tavern, shaking the snow from his cloak. "${name} turned back before we even reached the keep!" He bangs his tankard on the bar. "Are there any brave adventurers willing to chance their life to save the beautiful Snow Queen?"` },
     choices: [
       { text: 'Back to the tavern', url: TAVERN_LINK },
     ],
@@ -209,7 +220,8 @@ module.exports = function setupSnowQueen(bot, { ROOMS }) {
   function ensureSchedule() {
     const today = Math.floor(now() / DAY) * DAY
     for (const dayStart of [today, today + DAY]) {
-      const count = db.prepare('SELECT COUNT(*) AS n FROM snowqueen_calls WHERE due_at >= ? AND due_at < ?').get(dayStart, dayStart + DAY).n
+      // extra calls (manual, or after someone gives up) don't count towards the two a day
+      const count = db.prepare('SELECT COUNT(*) AS n FROM snowqueen_calls WHERE due_at >= ? AND due_at < ? AND extra = 0').get(dayStart, dayStart + DAY).n
       if (count === 0) scheduleDay(dayStart)
     }
   }
@@ -223,7 +235,7 @@ module.exports = function setupSnowQueen(bot, { ROOMS }) {
     const open = db.prepare('SELECT * FROM snowqueen_calls WHERE posted_at IS NOT NULL AND claimed_by IS NULL AND closed_at IS NULL').all()
     for (const call of open) {
       db.prepare('UPDATE snowqueen_calls SET closed_at = ? WHERE id = ?').run(now(), call.id)
-      await bot.telegram.editMessageText(call.chat_id, call.message_id, undefined, `${CALL_TEXT}\n\nNo one answered Dwelryn's call.`)
+      await bot.telegram.editMessageText(call.chat_id, call.message_id, undefined, `${call.text || CALL_TEXT}\n\nNo one answered Dwelryn's call.`)
         .catch((error) => console.log(`[snowqueen] couldn't close call ${call.id}: ${error.description || error.message}`))
     }
   }
@@ -234,9 +246,10 @@ module.exports = function setupSnowQueen(bot, { ROOMS }) {
       return
     }
     await closeOpenCalls()
-    const message = await bot.telegram.sendMessage(TAVERN_GROUP, CALL_TEXT, { reply_markup: callKeyboard(call.id) })
-    db.prepare('UPDATE snowqueen_calls SET posted_at = ?, chat_id = ?, message_id = ? WHERE id = ?')
-      .run(now(), String(TAVERN_GROUP), message.message_id, call.id)
+    const text = call.text || CALL_TEXT
+    const message = await bot.telegram.sendMessage(TAVERN_GROUP, text, { reply_markup: callKeyboard(call.id) })
+    db.prepare('UPDATE snowqueen_calls SET posted_at = ?, chat_id = ?, message_id = ?, text = ? WHERE id = ?')
+      .run(now(), String(TAVERN_GROUP), message.message_id, text, call.id)
     console.log(`[snowqueen] posted call ${call.id} in the tavern`)
   }
 
@@ -258,9 +271,21 @@ module.exports = function setupSnowQueen(bot, { ROOMS }) {
     }
   }
 
-  // the player's current quest: the latest call they claimed that they haven't won yet
+  // the player's current quest: the latest call they claimed that they haven't won or given up yet
   function activeCall(userId) {
-    return db.prepare('SELECT * FROM snowqueen_calls WHERE claimed_by = ? AND won_at IS NULL ORDER BY claimed_at DESC LIMIT 1').get(String(userId))
+    return db.prepare('SELECT * FROM snowqueen_calls WHERE claimed_by = ? AND won_at IS NULL AND ended_at IS NULL ORDER BY claimed_at DESC LIMIT 1').get(String(userId))
+  }
+
+  const RECALL_DELAY = 60 // seconds after an adventurer gives up before Dwelryn calls again
+
+  // the player gave up: their quest ends, and a minute later Dwelryn asks the tavern for someone else
+  function defeat(from, defeated) {
+    const call = activeCall(from.id)
+    if (call) db.prepare('UPDATE snowqueen_calls SET ended_at = ? WHERE id = ?').run(now(), call.id)
+    leaveRoom(from.id)
+    announce(ROOMS.LOGGER, `UserName: ${playerName(from)} ${defeated.log}`)
+    db.prepare('INSERT INTO snowqueen_calls (due_at, text, extra) VALUES (?, ?, 1)').run(now() + RECALL_DELAY, defeated.call(playerName(from)))
+    setTimeout(tick, (RECALL_DELAY + 1) * 1000)
   }
 
   function sendScene(chatId, from, id) {
@@ -279,6 +304,7 @@ module.exports = function setupSnowQueen(bot, { ROOMS }) {
       leaveRoom(from.id)
       announce(ROOMS.LOGGER, `UserName: ${playerName(from)} saved the Snow Queen`)
     }
+    if (scene.defeated) defeat(from, scene.defeated)
     if (scene.tavern && TAVERN_GROUP) {
       bot.telegram.sendMessage(TAVERN_GROUP, scene.tavern(playerName(from)))
         .catch((error) => console.log(`[snowqueen] couldn't post in the tavern: ${error.description || error.message}`))
@@ -384,7 +410,8 @@ module.exports = function setupSnowQueen(bot, { ROOMS }) {
       const call = db.prepare('SELECT claimed_name FROM snowqueen_calls WHERE id = ?').get(id)
       return ctx.answerCbQuery(call && call.claimed_name ? `${call.claimed_name} already went with Dwelryn.` : 'Dwelryn has already left.')
     }
-    await ctx.editMessageText(`${CALL_TEXT}\n\n⚔️ ${name} went with Dwelryn.`)
+    const { text } = db.prepare('SELECT text FROM snowqueen_calls WHERE id = ?').get(id)
+    await ctx.editMessageText(`${text || CALL_TEXT}\n\n⚔️ ${name} went with Dwelryn.`)
       .catch((error) => console.log(`[snowqueen] couldn't update call ${id}: ${error.description || error.message}`))
     announce(ROOMS.LOGGER, `UserName: ${name} went with Dwelryn to save the Snow Queen`)
     return ctx.answerCbQuery(undefined, false, { url: `https://t.me/${bot.options.username}?start=sq_${id}` })
@@ -415,7 +442,7 @@ module.exports = function setupSnowQueen(bot, { ROOMS }) {
   // for testing: post a call right away (admins only, in a private chat with the bot)
   bot.command('dwelryncall', async (ctx) => {
     if (!ADMINS.includes(String(ctx.from.id))) return
-    const id = db.prepare('INSERT INTO snowqueen_calls (due_at) VALUES (?)').run(now()).lastInsertRowid
+    const id = db.prepare('INSERT INTO snowqueen_calls (due_at, extra) VALUES (?, 1)').run(now()).lastInsertRowid
     await postCall({ id })
     return ctx.reply(TAVERN_GROUP ? 'Dwelryn has made his call in the tavern.' : 'TAVERN_GROUP is not set yet, so there is nowhere to post the call.')
   })
