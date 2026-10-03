@@ -1,8 +1,10 @@
 // Sign-in page script. The bot's sign-in button links here with a one-time ?t=<token>;
-// the user logs in with WAX Cloud Wallet and the wallet is linked to the chat that token belongs to.
+// the user logs in with WAX Cloud Wallet (waxjs), Anchor or Wombat (WharfKit) and the wallet is linked
+// to the chat that token belongs to.
 const token = new URLSearchParams(window.location.search).get('t');
 
-const button = document.getElementById('login');
+const logins = document.getElementById('logins');
+const buttons = logins.querySelectorAll('button');
 const status = document.getElementById('status');
 
 function setStatus(text, kind) {
@@ -30,8 +32,14 @@ function showNoKey(address, buyUrl, findUrl) {
   document.getElementById('nokey').hidden = false;
 }
 
+const walletNames = { cloud: 'WAX Cloud Wallet', anchor: 'Anchor', wombat: 'Wombat' };
+
+function setBusy(busy) {
+  buttons.forEach((b) => { b.disabled = busy; });
+}
+
 if (!token) {
-  button.remove();
+  logins.remove();
   setStatus('Please open this page from the sign-in button in @keyroomjourneybot.');
 } else {
   const wax = new WaxJS({
@@ -39,18 +47,33 @@ if (!token) {
     tryAutoLogin: false,
   });
 
-  button.addEventListener('click', async () => {
-    button.disabled = true;
-    setStatus('Waiting for WAX Cloud Wallet...');
+  async function login(wallet) {
+    if (wallet === 'cloud') {
+      return wax.login();
+    }
+    if (!window.wharfLogin) {
+      throw new Error('Wallet support is still loading, try again in a moment.');
+    }
+    return window.wharfLogin(wallet);
+  }
+
+  logins.addEventListener('click', async (event) => {
+    const button = event.target.closest('button[data-wallet]');
+    if (!button) {
+      return;
+    }
+    const wallet = button.dataset.wallet;
+    setBusy(true);
+    setStatus(`Waiting for ${walletNames[wallet]}...`);
     try {
-      const address = await wax.login();
+      const address = await login(wallet);
       setStatus(`Signed in as ${address}. Checking for keys...`);
       const result = await postJson('/api/link', { token: token, address: address });
       if (result.keys === 0) {
         showNoKey(address, result.buyUrl, result.findUrl);
         return;
       }
-      button.remove();
+      logins.remove();
       if (result.keys > 0) {
         setStatus(`You carry ${result.keys} ${result.keys === 1 ? 'key' : 'keys'}! Head back to Telegram to open a door.`, 'ok');
       } else {
@@ -64,7 +87,7 @@ if (!token) {
     } catch (error) {
       console.log(error);
       setStatus(`Sign-in failed: ${error.message || error}`, 'error');
-      button.disabled = false;
+      setBusy(false);
     }
   });
 }

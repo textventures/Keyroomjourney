@@ -9,8 +9,9 @@ html(lang="en")
         link(rel="preconnect", href="https://fonts.googleapis.com")
         link(rel="preconnect", href="https://fonts.gstatic.com", crossorigin)
         link(href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap", rel="stylesheet")
-        link(href="/static/css/signin.css?v=6", rel="stylesheet")
-        script(src="/static/js/waxjs.bundle.js?v=6")
+        link(href="/static/css/signin.css?v=7", rel="stylesheet")
+        script(src="/static/js/waxjs.bundle.js?v=7")
+        script(src="/static/js/wharfkit.bundle.js?v=7", defer)
     body
         canvas#cave(aria-hidden="true")
         main.tablet#signin
@@ -27,8 +28,11 @@ html(lang="en")
             h1
                 span.title Keyroom
                 span.title Journey
-            p.lead Sign in with your WAX Cloud Wallet to continue your journey.
-            button#login.pixel-btn(type="button") Log in with WAX
+            p.lead Sign in with your WAX wallet to continue your journey.
+            .actions#logins
+                button.pixel-btn(type="button", data-wallet="cloud") WAX Cloud Wallet
+                button.pixel-btn.stone(type="button", data-wallet="anchor") Anchor
+                button.pixel-btn.stone(type="button", data-wallet="wombat") Wombat
             p#status(role="status")
             p.hint You'll head back to Telegram once you're signed in.
         main.tablet#nokey(hidden)
@@ -52,5 +56,5 @@ html(lang="en")
                 a#buy-key.pixel-btn(href="#", target="_blank", rel="noopener") Buy a key
                 a#find-key.pixel-btn.stone(href="#", target="_blank", rel="noopener") Find a key
             p.hint Got one? #[a(href="https://t.me/keyroomjourneybot") Back to Telegram] and try the door again.
-        script(src="/static/js/cave.js?v=6")
-        script(src="/static/js/signin.js?v=6")
+        script(src="/static/js/cave.js?v=7")
+        script(src="/static/js/signin.js?v=7")
