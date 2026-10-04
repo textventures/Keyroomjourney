@@ -2,6 +2,9 @@
 // Ported from saycubed/goblin-bot. Its old goblin tamer rooms are replaced by the shared Journey rooms.
 const { playerName } = require("../lib/rooms");
 
+// Nifty Wizards - Tavern, where the quest ends
+const TAVERN_LINK = "https://t.me/joinchat/H9mfqFY7eIDpQRg8HNUd3A";
+
 module.exports = function setupGoblin(bot, { announce, ROOMS }) {
 
 bot.command("respawn", (ctx) => {
@@ -443,22 +446,16 @@ bot.action("magic", (ctx) => {
   );
 });
 
-//this is the message for blade, it has 2 choices follow and run
+//this is the message for blade, the end of the quest: it leads to the tavern
 bot.action("blade", (ctx) => {
   //ctx.deleteMessage()
   ctx.telegram.sendMessage(
     ctx.chat.id,
-    'Good choice. Only knives appear to be effective against these little buggers. The vengeful mob of wizards make quick work slicing through the hapless goblins before them. The goblins stood no chance against the coordinated team attack.',
+    'Good choice. Only knives appear to be effective against these little buggers. The vengeful mob of wizards make quick work slicing through the hapless goblins before them. The goblins stood no chance against the coordinated team attack. Somewhere deep in the Labyrinth the Goblin Boss howls and flees. Victory is yours! Time to lead your squad to the tavern and celebrate.',
     {
       reply_markup: {
         inline_keyboard: [
-          [
-            {
-              text: "Fight the Boss",
-              url: "https://t.me/+V_xgSdPNL4paGxnO",
-            },
-            { text: "Chicken OUT", url: "https://t.me/niftywizardslobby" },
-          ],
+          [{ text: "To the tavern", url: TAVERN_LINK }],
         ],
       },
     }
